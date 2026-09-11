@@ -1,0 +1,72 @@
+name: Bootstrap diagnostic fork
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone upstream
+        run: git clone --depth 1 https://github.com/gekkehenkie11/esphome_gree_ac.git /tmp/upstream
+
+      - name: Copy upstream tree
+        run: |
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            /tmp/upstream/ ./
+
+      - name: Apply UART response-timeout retry patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('components/sinclair_ac/esppac_cnt.cpp')
+          s = p.read_text()
+
+          marker = '''    /* if there are no packets for 5 seconds - mark module as not ready */\n'''
+          if marker not in s:
+              raise SystemExit('Expected timeout marker not found; upstream changed')
+
+          retry = '''    /* A lost response used to leave wait_response_ latched forever, which\n     * permanently stopped all further UART polls. Retry after one response timeout. */\n    if (this->wait_response_ &&\n        millis() - this->last_packet_sent_ >= protocol::TIME_TIMEOUT_INACTIVE_MS)\n    {\n        ESP_LOGW(TAG, "No AC response within timeout; retrying UART poll");\n        this->wait_response_ = false;\n    }\n\n'''
+
+          if 'No AC response within timeout; retrying UART poll' not in s:
+              s = s.replace(marker, retry + marker, 1)
+          p.write_text(s)
+
+          # Make it obvious in the component startup log which build is running.
+          h = Path('components/sinclair_ac/esppac.h')
+          hs = h.read_text()
+          hs = hs.replace('static const char *const VERSION = "0.0.1";',
+                          'static const char *const VERSION = "0.0.1-ravoa-retry1";')
+          h.write_text(hs)
+
+          readme = Path('README.md')
+          rs = readme.read_text()
+          note = '''> **Diagnostic fork (vsebastiaan):** adds a UART response-timeout retry so a single missed AC reply cannot leave `wait_response_` latched forever. This is intentionally a minimal diagnostic change on top of `gekkehenkie11/esphome_gree_ac`.\n\n'''
+          if not rs.startswith('> **Diagnostic fork'):
+              readme.write_text(note + rs)
+          PY
+
+      - name: Commit populated fork
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git commit -m 'feat: bootstrap upstream with UART response retry'
+          git push origin main
