@@ -1,0 +1,38 @@
+name: Materialize gree_uart component
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/materialize-gree-uart.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create self-contained gree_uart C++ source
+        run: |
+          cp components/gree/gree.cpp components/gree_uart/gree.cpp
+          cp components/gree/gree.h components/gree_uart/gree.h
+          sed -i 's/namespace gree {/namespace gree_uart {/g; s/namespace gree$/namespace gree_uart/g; s/namespace gree/namespace gree_uart/g' components/gree_uart/gree.cpp components/gree_uart/gree.h
+          sed -i 's/}  \/\/ namespace gree$/}  \/\/ namespace gree_uart/g' components/gree_uart/gree.cpp components/gree_uart/gree.h
+
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add components/gree_uart/gree.cpp components/gree_uart/gree.h
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'feat: materialize gree_uart C++ implementation'
+          git push origin main
