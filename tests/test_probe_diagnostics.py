@@ -22,6 +22,7 @@ MOCK_HEADER = r'''
 #include <string>
 #include <vector>
 #define GREE_RX_BUFFER_SIZE 52
+#define HEX 16 // Arduino Print.h macro must not collide with our identifiers.
 inline bool logger_open = false;
 inline std::vector<std::string> output;
 template<typename... Args> void test_log(const char *, const char *fmt, Args... args) {

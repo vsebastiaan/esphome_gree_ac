@@ -39,15 +39,15 @@ void GreeClimate::log_probe_result() {
     return;
   }
 
-  static const char HEX[] = "0123456789ABCDEF";
+  static const char hex_digits[] = "0123456789ABCDEF";
   char text[3 * GREE_RX_BUFFER_SIZE + 1];
   size_t pos = 0;
   for (uint8_t i = 0; i < size; i++) {
     const uint8_t value = this->startup_capture_[index][i];
     if (i != 0)
       text[pos++] = ' ';
-    text[pos++] = HEX[value >> 4];
-    text[pos++] = HEX[value & 0x0F];
+    text[pos++] = hex_digits[value >> 4];
+    text[pos++] = hex_digits[value & 0x0F];
   }
   text[pos] = '\0';
   ESP_LOGI("gree", "[%s] CAPTURED_RX %u/%u len=%u: %s", PROBE_DIAGNOSTICS_VERSION,
