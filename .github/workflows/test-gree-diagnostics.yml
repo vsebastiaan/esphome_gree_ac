@@ -1,0 +1,31 @@
+name: Test Gree diagnostics
+
+on:
+  push:
+    branches: [main, fix/probe-diag-v2]
+    paths:
+      - 'components/gree_uart/**'
+      - 'tests/**'
+      - '.github/workflows/test-gree-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Native diagnostics regression tests (ASan and UBSan)
+        run: python tests/test_probe_diagnostics.py
+      - name: Install matching ESPHome version
+        run: python -m pip install esphome==2026.7.4
+      - name: Validate D1 Mini fixture
+        run: esphome config tests/compile_gree_uart.yaml
+      - name: Compile real ESP8266 firmware (no upload)
+        run: esphome compile tests/compile_gree_uart.yaml

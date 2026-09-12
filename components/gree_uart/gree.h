@@ -74,11 +74,14 @@ struct gree_raw_packet_t {
 
 class GreeClimate : public climate::Climate, public uart::UARTDevice, public PollingComponent {
  public:
+  void setup() override;
   void loop() override;
   void update() override;
   void dump_config() override;
   void control(const climate::ClimateCall &call) override;
   void set_supported_presets(climate::ClimatePresetMask presets) { this->supported_presets_ = presets; }
+  // Report retained results without restarting the probe or transmitting UART.
+  void log_probe_result();
 
  protected:
   climate::ClimateTraits traits() override;
@@ -104,6 +107,7 @@ class GreeClimate : public climate::Climate, public uart::UARTDevice, public Pol
   uint8_t startup_capture_count_{0};
   uint8_t startup_capture_size_[8]{};
   uint8_t startup_capture_[8][GREE_RX_BUFFER_SIZE]{};
+  uint8_t startup_report_frame_index_{0};
 
   climate::ClimatePresetMask supported_presets_{};
 };

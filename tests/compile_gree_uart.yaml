@@ -1,0 +1,49 @@
+# Compile-only fixture. Never flash this dummy network configuration.
+esphome:
+  name: gree-uart-smoke
+
+esp8266:
+  board: d1_mini
+
+logger:
+  baud_rate: 0
+  level: VERBOSE
+
+api:
+  encryption:
+    key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: "compile-test-not-a-real-network"
+  password: "compile-test-password"
+
+uart:
+  id: ac_uart
+  tx_pin: GPIO1
+  rx_pin: GPIO3
+  baud_rate: 4800
+  data_bits: 8
+  parity: EVEN
+  stop_bits: 1
+  debug:
+    direction: BOTH
+    dummy_receiver: false
+    after:
+      timeout: 100ms
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [gree_uart]
+
+climate:
+  - platform: gree_uart
+    id: test_airco
+    name: "Airco"
+    uart_id: ac_uart
+    update_interval: 1s
+    supported_presets: [NONE, BOOST]
