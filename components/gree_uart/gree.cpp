@@ -3,7 +3,7 @@
 #include "esphome/core/macros.h"
 
 namespace esphome {
-namespace gree_uart_uart {
+namespace gree_uart {
 
 static const char *const TAG = "gree";
 
@@ -106,8 +106,7 @@ climate::ClimateTraits GreeClimate::traits() {
   });
 
   // traits.set_supported_swing_modes(this->supported_swing_modes_);
-  traits.set_supports_current_temperature(true);
-  traits.set_supports_two_point_target_temperature(false);
+  traits.add_feature_flags(climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE);
 
   traits.set_supported_presets(this->supported_presets_);
 
@@ -391,5 +390,5 @@ uint8_t GreeClimate::get_checksum_(const uint8_t *message, size_t size) {
   return crc;
 }
 
-}  // namespace gree_uart_uart
+}  // namespace gree_uart
 }  // namespace esphome

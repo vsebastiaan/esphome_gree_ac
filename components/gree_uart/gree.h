@@ -1,12 +1,14 @@
 #pragma once
 
+#include <set>
+
 #include "esphome/core/component.h"
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
-namespace gree_uart_uart {
+namespace gree_uart {
 
 // enum SwingMode : uint8_t { SWING_OFF = 0, SWING_VERTICAL = 1, SWING_HORIZONTAL = 2, SWING_BOTH = 3 };
 
@@ -118,5 +120,5 @@ class GreeClimate : public climate::Climate, public uart::UARTDevice, public Pol
   // std::set<climate::ClimateSwingMode> supported_swing_modes_{};
 };
 
-}  // namespace gree_uart_uart
+}  // namespace gree_uart
 }  // namespace esphome
