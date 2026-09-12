@@ -59,43 +59,26 @@ enum ac_louver_H: uint8_t {
 #define GREE_RX_BUFFER_SIZE 52
 
 union gree_start_bytes_t {
-//     uint16_t u16;
     uint8_t u8x2[2];
 };
 
-struct gree_header_t
-{
+struct gree_header_t {
   gree_start_bytes_t start_bytes;
   uint8_t data_length;
 };
 
-struct gree_raw_packet_t
-{
+struct gree_raw_packet_t {
   gree_header_t header;
-  uint8_t data[1]; // first data byte
+  uint8_t data[1];
 };
-
-
-/*
-class Constants {
-  public:
-    // ac update interval in ms
-    static const uint32_t AC_STATE_REQUEST_INTERVAL;
-};
-const uint32_t Constants::AC_STATE_REQUEST_INTERVAL = 300;
-*/
 
 class GreeClimate : public climate::Climate, public uart::UARTDevice, public PollingComponent {
  public:
-  // void setup() override;
   void loop() override;
   void update() override;
   void dump_config() override;
   void control(const climate::ClimateCall &call) override;
   void set_supported_presets(climate::ClimatePresetMask presets) { this->supported_presets_ = presets; }
-  // void set_supported_swing_modes(const climate::ClimateSwingModeMask &modes) {
-  //   this->supported_swing_modes_ = modes;
-  // }
 
  protected:
   climate::ClimateTraits traits() override;
@@ -105,19 +88,17 @@ class GreeClimate : public climate::Climate, public uart::UARTDevice, public Pol
   uint8_t get_checksum_(const uint8_t *message, size_t size);
 
  private:
-  // uint32_t _update_period = Constants::AC_STATE_REQUEST_INTERVAL;
+  void run_startup_probe_();
 
-  // Parts of the message that must have specific values for "send" command.
-  // These are not 0x00 and the meaning of those values is unknown at the moment.
-  // Others set to 0x00
-  // data_write_[41] = 12; // unknown but not 0x00. TODO
   uint8_t data_write_[47] = {0x7E, 0x7E, 0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   uint8_t data_read_[GREE_RX_BUFFER_SIZE] = {0};
 
   bool receiving_packet_ = false;
+  uint8_t startup_probe_step_{0};
+  uint32_t startup_probe_next_ms_{0};
+  bool startup_probe_done_{false};
 
   climate::ClimatePresetMask supported_presets_{};
-  // climate::ClimateSwingModeMask supported_swing_modes_{};
 };
 
 }  // namespace gree_uart
