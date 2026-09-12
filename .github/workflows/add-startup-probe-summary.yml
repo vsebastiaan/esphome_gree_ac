@@ -1,0 +1,107 @@
+name: Add startup probe summary
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/add-startup-probe-summary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch delayed probe summary
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          h = Path('components/gree_uart/gree.h')
+          s = h.read_text()
+          s = s.replace(
+              '  void run_startup_probe_();\n',
+              '  void run_startup_probe_();\n  void report_startup_probe_();\n',
+              1,
+          )
+          s = s.replace(
+              '  bool startup_probe_done_{false};\n',
+              '  bool startup_probe_done_{false};\n'
+              '  bool startup_capture_open_{true};\n'
+              '  bool startup_probe_summary_done_{false};\n'
+              '  uint32_t startup_probe_summary_at_ms_{0};\n'
+              '  uint8_t startup_capture_count_{0};\n'
+              '  uint8_t startup_capture_size_[8]{};\n'
+              '  uint8_t startup_capture_[8][GREE_RX_BUFFER_SIZE]{};\n',
+              1,
+          )
+          h.write_text(s)
+
+          p = Path('components/gree_uart/gree.cpp')
+          s = p.read_text()
+
+          s = s.replace(
+              'void GreeClimate::loop() {\n  this->run_startup_probe_();\n',
+              'void GreeClimate::loop() {\n  this->run_startup_probe_();\n  this->report_startup_probe_();\n',
+              1,
+          )
+
+          marker = '    this->read_array(raw_packet->data, raw_packet->header.data_length);\n\n    dump_message_("Read array", this->data_read_, raw_packet->header.data_length + sizeof(gree_header_t));'
+          replacement = '''    this->read_array(raw_packet->data, raw_packet->header.data_length);\n\n    const uint8_t packet_size = raw_packet->header.data_length + sizeof(gree_header_t);\n    if (this->startup_capture_open_ && this->startup_capture_count_ < 8) {\n      memcpy(this->startup_capture_[this->startup_capture_count_], this->data_read_, packet_size);\n      this->startup_capture_size_[this->startup_capture_count_] = packet_size;\n      this->startup_capture_count_++;\n    }\n\n    dump_message_("Read array", this->data_read_, raw_packet->header.data_length + sizeof(gree_header_t));'''
+          if marker not in s:
+              raise SystemExit('RX capture marker not found')
+          s = s.replace(marker, replacement, 1)
+
+          old_done = '''    default:\n      this->startup_probe_done_ = true;\n      ESP_LOGI(TAG, "Startup probe complete; enabling normal 0x2C polling");\n      return;'''
+          new_done = '''    default:\n      this->startup_probe_done_ = true;\n      this->startup_capture_open_ = false;\n      this->startup_probe_summary_at_ms_ = now + 10000;\n      ESP_LOGI(TAG, "Startup probe complete; enabling normal 0x2C polling");\n      return;'''
+          if old_done not in s:
+              raise SystemExit('probe completion marker not found')
+          s = s.replace(old_done, new_done, 1)
+
+          insert_before = 'void GreeClimate::update() {\n'
+          report_fn = r'''void GreeClimate::report_startup_probe_() {
+  if (!this->startup_probe_done_ || this->startup_probe_summary_done_ || this->startup_probe_summary_at_ms_ == 0)
+    return;
+  if (static_cast<int32_t>(millis() - this->startup_probe_summary_at_ms_) < 0)
+    return;
+
+  ESP_LOGI(TAG, "=== GREE STARTUP PROBE RESULT ===");
+  ESP_LOGI(TAG, "Sent: 0x10 x1, 0x05 x2, 0x0E x4");
+  ESP_LOGI(TAG, "Captured UART responses during probe: %u", this->startup_capture_count_);
+  for (uint8_t i = 0; i < this->startup_capture_count_; i++) {
+    char title[40];
+    snprintf(title, sizeof(title), "Probe RX %u", i + 1);
+    this->dump_message_(title, this->startup_capture_[i], this->startup_capture_size_[i]);
+  }
+  if (this->startup_capture_count_ == 0)
+    ESP_LOGW(TAG, "Probe received NO UART response frames");
+  ESP_LOGI(TAG, "=== END GREE STARTUP PROBE RESULT ===");
+  this->startup_probe_summary_done_ = true;
+}
+
+'''
+          if 'void GreeClimate::report_startup_probe_()' not in s:
+              if insert_before not in s:
+                  raise SystemExit('update marker not found')
+              s = s.replace(insert_before, report_fn + insert_before, 1)
+
+          p.write_text(s)
+          PY
+
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add components/gree_uart/gree.h components/gree_uart/gree.cpp
+          if git diff --cached --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git commit -m 'feat: replay startup probe result after logger connects'
+          git push origin main
