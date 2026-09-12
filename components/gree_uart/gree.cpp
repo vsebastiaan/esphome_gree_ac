@@ -7,6 +7,25 @@ namespace gree_uart {
 
 static const char *const TAG = "gree";
 
+// Stock Gree Wi-Fi-module startup frames documented by bekmansurov/gree-hvac-protocol.
+// Sent once after boot as a diagnostic probe before normal 0x2C polling.
+static const uint8_t STARTUP_10[] = {
+    0x7E, 0x7E, 0x10, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x28, 0x1E, 0x19, 0x23, 0x23, 0x00, 0xB8};
+static const uint8_t STARTUP_05[] = {0x7E, 0x7E, 0x05, 0x04, 0x07, 0x00, 0x00, 0x10};
+static const uint8_t STARTUP_0E_A[] = {
+    0x7E, 0x7E, 0x0E, 0x03, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12};
+static const uint8_t STARTUP_0E_B[] = {
+    0x7E, 0x7E, 0x0E, 0x03, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7E, 0x90};
+static const uint8_t STARTUP_0E_NO_DHCP[] = {
+    0x7E, 0x7E, 0x0E, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7E, 0x8F};
+static const uint8_t STARTUP_0E_CONNECTED[] = {
+    0x7E, 0x7E, 0x0E, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x80, 0x7E, 0x0F};
+
 // block of byte positions in requests/answers
 // GrKoR: I recommend change this approach (byte positions) to structures like gree_raw_packet_t.
 // You can use pointers (and type casting) for assignment structure to the data buffer.
@@ -38,6 +57,8 @@ void GreeClimate::dump_config() {
 }
 
 void GreeClimate::loop() {
+  this->run_startup_probe_();
+
   gree_raw_packet_t *raw_packet = (gree_raw_packet_t *)this->data_read_;
 
   while (!receiving_packet_ && this->available() >= sizeof(gree_header_t)) {
@@ -77,7 +98,40 @@ void GreeClimate::setup() {
 }
 */
 
+void GreeClimate::run_startup_probe_() {
+  if (this->startup_probe_done_) return;
+  const uint32_t now = millis();
+  if (this->startup_probe_next_ms_ == 0) {
+    this->startup_probe_next_ms_ = now + 150;
+    ESP_LOGI(TAG, "Startup probe armed; normal 0x2C polling paused");
+    return;
+  }
+  if (static_cast<int32_t>(now - this->startup_probe_next_ms_) < 0) return;
+
+  const uint8_t *message = nullptr;
+  uint8_t size = 0;
+  const char *label = nullptr;
+  switch (this->startup_probe_step_) {
+    case 0: message = STARTUP_10; size = sizeof(STARTUP_10); label = "0x10"; break;
+    case 1:
+    case 2: message = STARTUP_05; size = sizeof(STARTUP_05); label = "0x05"; break;
+    case 3: message = STARTUP_0E_A; size = sizeof(STARTUP_0E_A); label = "0x0E startup A"; break;
+    case 4: message = STARTUP_0E_B; size = sizeof(STARTUP_0E_B); label = "0x0E startup B"; break;
+    case 5: message = STARTUP_0E_NO_DHCP; size = sizeof(STARTUP_0E_NO_DHCP); label = "0x0E no-DHCP"; break;
+    case 6: message = STARTUP_0E_CONNECTED; size = sizeof(STARTUP_0E_CONNECTED); label = "0x0E connected"; break;
+    default:
+      this->startup_probe_done_ = true;
+      ESP_LOGI(TAG, "Startup probe complete; enabling normal 0x2C polling");
+      return;
+  }
+  ESP_LOGI(TAG, "Startup probe %u/7: %s", this->startup_probe_step_ + 1, label);
+  this->send_data_(message, size);
+  this->startup_probe_step_++;
+  this->startup_probe_next_ms_ = now + (this->startup_probe_step_ >= 7 ? 500 : 300);
+}
+
 void GreeClimate::update() {
+  if (!this->startup_probe_done_) return;
   data_write_[CRC_WRITE] = get_checksum_(data_write_, sizeof(data_write_));
   send_data_(data_write_, sizeof(data_write_));
 }
@@ -222,6 +276,10 @@ void GreeClimate::read_state_(const uint8_t *data, uint8_t size) {
 }
 
 void GreeClimate::control(const climate::ClimateCall &call) {
+  if (!this->startup_probe_done_) {
+    ESP_LOGW(TAG, "Ignoring control request while startup probe is active");
+    return;
+  }
   data_write_[FORCE_UPDATE] = 175;
   // show current temperature on display every time when sending new command. TEST!
   data_write_[13] = 0x20;
