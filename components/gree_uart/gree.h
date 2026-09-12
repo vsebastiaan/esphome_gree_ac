@@ -89,6 +89,7 @@ class GreeClimate : public climate::Climate, public uart::UARTDevice, public Pol
 
  private:
   void run_startup_probe_();
+  void report_startup_probe_();
 
   uint8_t data_write_[47] = {0x7E, 0x7E, 0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   uint8_t data_read_[GREE_RX_BUFFER_SIZE] = {0};
@@ -97,6 +98,12 @@ class GreeClimate : public climate::Climate, public uart::UARTDevice, public Pol
   uint8_t startup_probe_step_{0};
   uint32_t startup_probe_next_ms_{0};
   bool startup_probe_done_{false};
+  bool startup_capture_open_{true};
+  bool startup_probe_summary_done_{false};
+  uint32_t startup_probe_summary_at_ms_{0};
+  uint8_t startup_capture_count_{0};
+  uint8_t startup_capture_size_[8]{};
+  uint8_t startup_capture_[8][GREE_RX_BUFFER_SIZE]{};
 
   climate::ClimatePresetMask supported_presets_{};
 };

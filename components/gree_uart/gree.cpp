@@ -58,6 +58,7 @@ void GreeClimate::dump_config() {
 
 void GreeClimate::loop() {
   this->run_startup_probe_();
+  this->report_startup_probe_();
 
   gree_raw_packet_t *raw_packet = (gree_raw_packet_t *)this->data_read_;
 
@@ -83,6 +84,13 @@ void GreeClimate::loop() {
 
   if (receiving_packet_ && this->available() >= raw_packet->header.data_length) {
     this->read_array(raw_packet->data, raw_packet->header.data_length);
+
+    const uint8_t packet_size = raw_packet->header.data_length + sizeof(gree_header_t);
+    if (this->startup_capture_open_ && this->startup_capture_count_ < 8) {
+      memcpy(this->startup_capture_[this->startup_capture_count_], this->data_read_, packet_size);
+      this->startup_capture_size_[this->startup_capture_count_] = packet_size;
+      this->startup_capture_count_++;
+    }
 
     dump_message_("Read array", this->data_read_, raw_packet->header.data_length + sizeof(gree_header_t));
     read_state_(this->data_read_, raw_packet->header.data_length + sizeof(gree_header_t));
@@ -121,6 +129,8 @@ void GreeClimate::run_startup_probe_() {
     case 6: message = STARTUP_0E_CONNECTED; size = sizeof(STARTUP_0E_CONNECTED); label = "0x0E connected"; break;
     default:
       this->startup_probe_done_ = true;
+      this->startup_capture_open_ = false;
+      this->startup_probe_summary_at_ms_ = now + 10000;
       ESP_LOGI(TAG, "Startup probe complete; enabling normal 0x2C polling");
       return;
   }
@@ -128,6 +138,26 @@ void GreeClimate::run_startup_probe_() {
   this->send_data_(message, size);
   this->startup_probe_step_++;
   this->startup_probe_next_ms_ = now + (this->startup_probe_step_ >= 7 ? 500 : 300);
+}
+
+void GreeClimate::report_startup_probe_() {
+  if (!this->startup_probe_done_ || this->startup_probe_summary_done_ || this->startup_probe_summary_at_ms_ == 0)
+    return;
+  if (static_cast<int32_t>(millis() - this->startup_probe_summary_at_ms_) < 0)
+    return;
+
+  ESP_LOGI(TAG, "=== GREE STARTUP PROBE RESULT ===");
+  ESP_LOGI(TAG, "Sent: 0x10 x1, 0x05 x2, 0x0E x4");
+  ESP_LOGI(TAG, "Captured UART responses during probe: %u", this->startup_capture_count_);
+  for (uint8_t i = 0; i < this->startup_capture_count_; i++) {
+    char title[40];
+    snprintf(title, sizeof(title), "Probe RX %u", i + 1);
+    this->dump_message_(title, this->startup_capture_[i], this->startup_capture_size_[i]);
+  }
+  if (this->startup_capture_count_ == 0)
+    ESP_LOGW(TAG, "Probe received NO UART response frames");
+  ESP_LOGI(TAG, "=== END GREE STARTUP PROBE RESULT ===");
+  this->startup_probe_summary_done_ = true;
 }
 
 void GreeClimate::update() {
