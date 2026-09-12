@@ -1,0 +1,52 @@
+name: Vendor Bekmansurov Gree component
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bootstrap-bekmansurov.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch Bekmansurov component
+        run: |
+          git clone --depth 1 https://github.com/bekmansurov/esphome_gree_hvac.git /tmp/bekman
+          rm -rf components/gree
+          cp -a /tmp/bekman/components/gree components/gree
+
+      - name: Patch for ESPHome 2026 climate API
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('components/gree/climate.py')
+          s = p.read_text()
+          old = 'climate.CLIMATE_SCHEMA.extend('
+          new = 'climate.climate_schema(GreeClimate).extend('
+          if old not in s:
+              raise SystemExit('Expected legacy CLIMATE_SCHEMA not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+      - name: Commit compatibility component
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add components/gree
+          if git diff --cached --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git commit -m 'feat: vendor Bekmansurov Gree component for ESPHome 2026'
+          git push origin main
