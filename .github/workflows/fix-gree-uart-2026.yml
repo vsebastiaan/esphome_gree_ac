@@ -1,0 +1,56 @@
+name: Fix gree_uart ESPHome 2026 compatibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-gree-uart-2026.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch gree_uart
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          h = Path('components/gree_uart/gree.h')
+          s = h.read_text()
+          if '#include <set>' not in s:
+              s = s.replace('#pragma once\n', '#pragma once\n\n#include <set>\n', 1)
+          s = s.replace('namespace gree_uart_uart {', 'namespace gree_uart {')
+          s = s.replace('}  // namespace gree_uart_uart', '}  // namespace gree_uart')
+          h.write_text(s)
+
+          cpp = Path('components/gree_uart/gree.cpp')
+          s = cpp.read_text()
+          s = s.replace('namespace gree_uart_uart {', 'namespace gree_uart {')
+          s = s.replace('}  // namespace gree_uart_uart', '}  // namespace gree_uart')
+          s = s.replace(
+              '  traits.set_supports_current_temperature(true);\n'
+              '  traits.set_supports_two_point_target_temperature(false);\n',
+              '  traits.add_feature_flags(climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE);\n'
+          )
+          cpp.write_text(s)
+          PY
+
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add components/gree_uart
+          if git diff --cached --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git commit -m 'fix: make gree_uart compile on ESPHome 2026'
+          git push origin main
