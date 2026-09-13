@@ -26,7 +26,9 @@ uart:
   tx_pin:
     number: GPIO1
     inverted: true
-  rx_pin: GPIO3
+  rx_pin:
+    number: GPIO3
+    inverted: true
   baud_rate: 4800
   data_bits: 8
   parity: EVEN
@@ -44,4 +46,3 @@ climate:
     id: tosot_test
     name: "Tosot Test"
     uart_id: ac_uart
-    kick_pin: GPIO14
