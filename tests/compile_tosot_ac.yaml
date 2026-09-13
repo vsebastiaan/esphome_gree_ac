@@ -1,4 +1,6 @@
 # Compile-only fixture. Never flash this dummy network configuration.
+# Deliberately uses the minimal climate block: GWH18 selects and EXP switches
+# must be auto-created by the component defaults.
 esphome:
   name: tosot-ac-smoke
 
@@ -43,23 +45,3 @@ climate:
     name: "Tosot Test"
     uart_id: ac_uart
     kick_pin: GPIO14
-
-    fan_speed_select:
-      name: "Fan snelheid"
-    vertical_swing_select:
-      name: "Verticale lamel"
-    display_select:
-      name: "Display"
-
-    turbo_switch:
-      name: "EXP - Turbo"
-    sleep_switch:
-      name: "EXP - Sleep"
-    xfan_switch:
-      name: "EXP - X-Fan"
-    save_switch:
-      name: "EXP - Save / Eco"
-    plasma_switch:
-      name: "EXP - Health / Plasma"
-    beeper_switch:
-      name: "EXP - Beeper"
