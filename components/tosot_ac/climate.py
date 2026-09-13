@@ -64,15 +64,37 @@ CONFIG_SCHEMA = cv.All(
             # High-impedance in normal operation. The C++ driver switches this
             # pin to OUTPUT/HIGH only for a short RX-start kick.
             cv.Optional(CONF_KICK_PIN): pins.gpio_input_pin_schema,
-            cv.Optional(CONF_FAN_SPEED_SELECT): select_schema,
-            cv.Optional(CONF_VERTICAL_SWING_SELECT): select_schema,
-            cv.Optional(CONF_DISPLAY_SELECT): select_schema,
-            cv.Optional(CONF_TURBO_SWITCH): switch_schema,
-            cv.Optional(CONF_PLASMA_SWITCH): switch_schema,
-            cv.Optional(CONF_BEEPER_SWITCH): switch_schema,
-            cv.Optional(CONF_SLEEP_SWITCH): switch_schema,
-            cv.Optional(CONF_XFAN_SWITCH): switch_schema,
-            cv.Optional(CONF_SAVE_SWITCH): switch_schema,
+
+            # GWH18 controls are created by default so a minimal climate block
+            # cannot accidentally omit part of the Homey/ESPHome UI. Explicit
+            # YAML still overrides these names/settings when desired.
+            cv.Optional(
+                CONF_FAN_SPEED_SELECT, default={"name": "Fan snelheid"}
+            ): select_schema,
+            cv.Optional(
+                CONF_VERTICAL_SWING_SELECT, default={"name": "Verticale lamel"}
+            ): select_schema,
+            cv.Optional(
+                CONF_DISPLAY_SELECT, default={"name": "Display"}
+            ): select_schema,
+            cv.Optional(
+                CONF_TURBO_SWITCH, default={"name": "EXP - Turbo"}
+            ): switch_schema,
+            cv.Optional(
+                CONF_SLEEP_SWITCH, default={"name": "EXP - Sleep"}
+            ): switch_schema,
+            cv.Optional(
+                CONF_XFAN_SWITCH, default={"name": "EXP - X-Fan"}
+            ): switch_schema,
+            cv.Optional(
+                CONF_SAVE_SWITCH, default={"name": "EXP - Save / Eco"}
+            ): switch_schema,
+            cv.Optional(
+                CONF_PLASMA_SWITCH, default={"name": "EXP - Health / Plasma"}
+            ): switch_schema,
+            cv.Optional(
+                CONF_BEEPER_SWITCH, default={"name": "EXP - Beeper"}
+            ): switch_schema,
         }
     ),
 )
@@ -94,11 +116,10 @@ async def to_code(config):
         CONF_DISPLAY_SELECT: DISPLAY_OPTIONS,
     }
     for key, options in select_options.items():
-        if key in config:
-            conf = config[key]
-            entity = await select.new_select(conf, options=options)
-            await cg.register_component(entity, conf)
-            cg.add(getattr(var, f"set_{key}")(entity))
+        conf = config[key]
+        entity = await select.new_select(conf, options=options)
+        await cg.register_component(entity, conf)
+        cg.add(getattr(var, f"set_{key}")(entity))
 
     for key in [
         CONF_TURBO_SWITCH,
@@ -108,9 +129,8 @@ async def to_code(config):
         CONF_XFAN_SWITCH,
         CONF_SAVE_SWITCH,
     ]:
-        if key in config:
-            conf = config[key]
-            entity = cg.new_Pvariable(conf[CONF_ID])
-            await cg.register_component(entity, conf)
-            await switch.register_switch(entity, conf)
-            cg.add(getattr(var, f"set_{key}")(entity))
+        conf = config[key]
+        entity = cg.new_Pvariable(conf[CONF_ID])
+        await cg.register_component(entity, conf)
+        await switch.register_switch(entity, conf)
+        cg.add(getattr(var, f"set_{key}")(entity))
