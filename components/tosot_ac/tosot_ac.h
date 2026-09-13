@@ -165,24 +165,12 @@ class TosotGWH18AC : public TosotAC {
   void set_display_select(select::Select *value);
 
  protected:
-  // The original CS532AE module does a short startup handshake before normal
-  // state polling. On this GWH18 a D5 electrical kick alone proved intermittent,
-  // so startup combines: kick -> stock handshake -> passive polling window.
-  void run_startup_sequence_();
-  void arm_startup_cycle_();
-
   select::Select *gwh18_fan_speed_select_{nullptr};
   select::Select *gwh18_vertical_swing_select_{nullptr};
   select::Select *gwh18_display_select_{nullptr};
   uint8_t gwh18_last_fan_ui_code_{0xFF};
   uint8_t gwh18_last_vertical_ui_code_{0xFF};
   int8_t gwh18_last_display_ui_index_{-1};
-
-  uint8_t gwh18_startup_step_{0};
-  uint8_t gwh18_startup_cycle_{0};
-  uint8_t gwh18_startup_poll_count_{0};
-  uint32_t gwh18_startup_next_ms_{0};
-  bool gwh18_startup_polling_{false};
 };
 
 }  // namespace tosot_ac
