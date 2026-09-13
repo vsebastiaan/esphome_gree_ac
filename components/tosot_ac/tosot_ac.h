@@ -157,7 +157,6 @@ class TosotGWH18AC : public TosotAC {
   void set_fan_speed_select(select::Select *value);
   void set_vertical_swing_select(select::Select *value);
   void set_display_select(select::Select *value);
-  void set_turbo_select(select::Select *value);
   void set_plasma_select(select::Select *value);
   void set_beeper_select(select::Select *value);
   void set_sleep_select(select::Select *value);
@@ -168,7 +167,6 @@ class TosotGWH18AC : public TosotAC {
   select::Select *gwh18_fan_speed_select_{nullptr};
   select::Select *gwh18_vertical_swing_select_{nullptr};
   select::Select *gwh18_display_select_{nullptr};
-  select::Select *gwh18_turbo_select_{nullptr};
   select::Select *gwh18_plasma_select_{nullptr};
   select::Select *gwh18_beeper_select_{nullptr};
   select::Select *gwh18_sleep_select_{nullptr};
@@ -178,7 +176,6 @@ class TosotGWH18AC : public TosotAC {
   uint8_t gwh18_last_fan_ui_code_{0xFF};
   uint8_t gwh18_last_vertical_ui_code_{0xFF};
   int8_t gwh18_last_display_ui_index_{-1};
-  int8_t gwh18_last_turbo_ui_index_{-1};
   int8_t gwh18_last_plasma_ui_index_{-1};
   int8_t gwh18_last_beeper_ui_index_{-1};
   int8_t gwh18_last_sleep_ui_index_{-1};
