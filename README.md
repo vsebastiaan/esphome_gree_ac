@@ -1,4 +1,12 @@
-> **Tosot GWH18 / Wemos D1 mini:** this fork contains a hardware-tested UART replacement path for the Tosot GWH18AAD-K6DNA1B/I. It uses 4800 8E1 and a 2N3904 transistor interface in both UART directions, with both ESP8266 UART pins configured inverted. See [`docs/tosot-gwh18aad.md`](docs/tosot-gwh18aad.md) and [`examples/tosot-gwh18aad-live-test.yaml`](examples/tosot-gwh18aad-live-test.yaml).
+# Project lineage and license
+
+This repository is derived from [`gekkehenkie11/esphome_gree_ac`](https://github.com/gekkehenkie11/esphome_gree_ac), which is itself a fork of [`piotrva/esphome_gree_ac`](https://github.com/piotrva/esphome_gree_ac). The upstream projects are licensed under **GNU GPL-3.0**, and this repository remains published under **GPL-3.0** as well. Original authorship and license terms are intentionally retained and acknowledged.
+
+GitHub currently treats this repository as a standalone repository rather than as a network fork. That does **not** change its project lineage: the upstream work from `gekkehenkie11` and `piotrva` is the foundation this repository started from.
+
+At the same time, this repository has **diverged substantially** from the upstream implementation, especially for the Tosot GWH18AAD-K6DNA1B/I. The GWH18 path uses a hardware-verified dual-transistor UART interface, model-specific `2F/31` protocol handling, a dedicated ESPHome component path, Homey-oriented controls, and additional diagnostics/tests. It should therefore be considered a **substantially modified derivative**, not merely a mirror or a small patch set on top of the upstream fork.
+
+> **Tosot GWH18 / Wemos D1 mini:** this repository contains a hardware-tested UART replacement path for the Tosot GWH18AAD-K6DNA1B/I. It uses 4800 8E1 and a 2N3904 transistor interface in both UART directions, with both ESP8266 UART pins configured inverted. See [`docs/tosot-gwh18aad.md`](docs/tosot-gwh18aad.md) and [`examples/tosot-gwh18aad-live-test.yaml`](examples/tosot-gwh18aad-live-test.yaml).
 >
 > **Final verified wiring on the tested GWH18:**
 > - AC **ORANGE (AC TX)** -> **22k** -> base **2N3904**; emitter -> **BROWN/GND**; collector -> **GPIO3/RX**; **10k pull-up from GPIO3/collector to 3.3V**.
@@ -6,23 +14,23 @@
 > - **Do not add an external pull-up on BLACK.** The AC side already pulls BLACK/AC-RX high (measured around **4.8V** on the test unit); the transistor therefore only sinks that line low. The external 10k pull-up belongs on the ESP8266 RX collector side, to 3.3V.
 >
 > The GWH18 profile exposes Dutch Homey-oriented controls: `Ventilatorsnelheid` = Automatisch / Laag / Midden / Hoog / Turbo, `Verticale lamel`, `Display` and `Slaapstand`. Standard climate modes are localized by Homey as Automatisch / Koelen / Verwarmen / Ontvochtigen / Alleen ventileren / Uit. Less certain family-level mappings such as Save/Eco, X-Fan, Health/Plasma and Beeper remain explicit opt-in test controls. No separate GWH18 Quiet/Stil fan mode has been proven or exposed.
->
-> **Diagnostic fork (vsebastiaan):** adds a UART response-timeout retry so a single missed AC reply cannot leave `wait_response_` latched forever. This is intentionally a minimal diagnostic change on top of `gekkehenkie11/esphome_gree_ac`.
 
 # Open source WIFI module replacement for Gree protocol based AC's for Home Assistant.
 This repository adds support for ESP-based WiFi modules to interface with Gree/Sinclair AC units.
-It's forked from https://github.com/piotrva/esphome_gree_ac, big thanks to @piotrva for his work!
 
-My fork currently differs from the original code in the following ways. What I did:
+The original project lineage comes from `piotrva/esphome_gree_ac`, with further work from `gekkehenkie11/esphome_gree_ac`; many thanks to both upstream authors and contributors.
+
+Compared with the original project, this codebase includes among other things:
 
 1) Fixed the fan mode, tested on Gree/Daizuki/TGM AC's.
-2) Fixed the dropping of commands
-3) Fixed the rejection of commands
-4) Fixed reporting of current temp
-5) Fixed the Fahrenheit mode
+2) Fixed the dropping of commands.
+3) Fixed the rejection of commands.
+4) Fixed reporting of current temp.
+5) Fixed the Fahrenheit mode.
 6) Implemented optional command mute/no-beep behavior for compatible legacy modules. This is beeper suppression, **not** an AC Quiet/Stil fan mode.
+7) Added a substantially different, hardware-tested Tosot GWH18AAD-K6DNA1B/I implementation as documented above.
    
-It's now compatible with GRJWB04-J / Cs532ae wifi modules
+It's now compatible with GRJWB04-J / Cs532ae wifi modules, with the additional dedicated GWH18 path documented separately.
 
 # Current state:
 No known problems! if you run into an issue though, please let me know.
