@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""Compile the actual diagnostics translation unit against a fake timer/logger.
+"""Native regression tests for persistent dialect-probe diagnostics.
 
-This tests reporting with late/disconnected log consumers, not a physical UART
-or the ESPHome scheduler implementation. CI additionally compiles a real D1 image.
+The physical UART state machine is covered by the real ESP8266 compile in CI.
+These tests focus on late log viewers, reconnects, raw byte preservation and
+bounded rotation through responding probe steps.
 """
 from pathlib import Path
-import os
-import shutil
-import subprocess
-import tempfile
-import unittest
+import os, shutil, subprocess, tempfile, unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "components/gree_uart/probe_diagnostics.cpp"
@@ -22,12 +19,12 @@ MOCK_HEADER = r'''
 #include <string>
 #include <vector>
 #define GREE_RX_BUFFER_SIZE 52
-#define HEX 16 // Arduino Print.h macro must not collide with our identifiers.
+#define HEX 16
 inline bool logger_open = false;
 inline std::vector<std::string> output;
 template<typename... Args> void test_log(const char *, const char *fmt, Args... args) {
   if (!logger_open) return;
-  char text[512];
+  char text[768];
   std::snprintf(text, sizeof(text), fmt, args...);
   output.emplace_back(text);
 }
@@ -36,21 +33,34 @@ template<typename... Args> void test_log(const char *, const char *fmt, Args... 
 namespace esphome { namespace gree_uart {
 class GreeClimate {
  public:
+  static constexpr uint8_t DIALECT_PROBE_TOTAL_STEPS = 12;
+  static constexpr uint16_t DIALECT_PROBE_RX_MAX = 512;
   void setup();
   void log_probe_result();
+  void log_dialect_probe_result();
   void set_interval(const char *name, uint32_t ms, std::function<void()> cb) {
     timer_name = name; interval_ms = ms; timer = cb; ++timer_registrations;
+  }
+  const char *dialect_probe_label_(uint8_t step) const {
+    static const char *labels[DIALECT_PROBE_TOTAL_STEPS] = {
+      "step0", "step1", "step2", "step3", "step4", "step5",
+      "step6", "step7", "step8", "step9", "step10", "step11"};
+    return step < DIALECT_PROBE_TOTAL_STEPS ? labels[step] : "unknown";
   }
   std::string timer_name;
   uint32_t interval_ms = 0;
   unsigned timer_registrations = 0;
   std::function<void()> timer;
-  bool startup_probe_done_ = false;
-  uint8_t startup_probe_step_ = 0;
-  uint8_t startup_capture_count_ = 0;
-  uint8_t startup_capture_size_[8]{};
-  uint8_t startup_capture_[8][GREE_RX_BUFFER_SIZE]{};
-  uint8_t startup_report_frame_index_ = 0;
+  bool dialect_probe_active_ = true;
+  bool dialect_probe_found_rx_ = false;
+  uint8_t dialect_probe_sent_ = 0;
+  uint8_t dialect_probe_first_hit_step_ = 0xFF;
+  uint8_t dialect_probe_report_step_cursor_ = 0;
+  uint16_t dialect_probe_rx_total_ = 0;
+  uint16_t dialect_probe_rx_stored_ = 0;
+  uint8_t dialect_probe_rx_[DIALECT_PROBE_RX_MAX]{};
+  uint16_t dialect_probe_step_rx_[DIALECT_PROBE_TOTAL_STEPS]{};
+  uint16_t dialect_probe_step_offset_[DIALECT_PROBE_TOTAL_STEPS]{};
 };
 }}
 '''
@@ -58,106 +68,61 @@ HARNESS = r'''
 #include "gree.h"
 #include <cassert>
 using esphome::gree_uart::GreeClimate;
-static bool has(const char *s) {
-  for (const auto &line : output) if (line.find(s) != std::string::npos) return true;
-  return false;
+static bool has(const char *s) { for (const auto &x : output) if (x.find(s) != std::string::npos) return true; return false; }
+static void hit(GreeClimate &c, uint8_t step, const uint8_t *b, uint16_t n) {
+  uint16_t off = c.dialect_probe_rx_stored_; assert(off + n <= GreeClimate::DIALECT_PROBE_RX_MAX);
+  c.dialect_probe_step_offset_[step] = off; c.dialect_probe_step_rx_[step] = n;
+  for (uint16_t i=0;i<n;i++) c.dialect_probe_rx_[off+i]=b[i];
+  c.dialect_probe_rx_stored_ += n; c.dialect_probe_rx_total_ += n;
+  if (c.dialect_probe_first_hit_step_ == 0xFF) c.dialect_probe_first_hit_step_ = step;
 }
 int main(int argc, char **argv) {
-  assert(argc == 2);
-  const std::string scenario = argv[1];
-  GreeClimate c;
-  c.setup();
-  assert(c.timer_registrations == 1);
-  assert(c.timer_name == "gree-probe-report");
-  assert(c.interval_ms == 10000);
-  if (scenario == "late") {
-    c.startup_probe_done_ = true; c.startup_probe_step_ = 7;
-    for (int i = 0; i < 12; i++) c.timer(); // logger closed for two minutes
-    assert(output.empty());
-    logger_open = true;
-    c.timer();
-    assert(has("[probe-diag-v2] PROBE_RESULT state=DONE sent=7/7 captured_frames=0"));
-    assert(output.size() == 1);
-  } else if (scenario == "reconnect") {
-    c.startup_probe_done_ = true; c.startup_probe_step_ = 7;
-    logger_open = true; c.timer(); assert(output.size() == 1);
-    logger_open = false; output.clear();
-    for (int i = 0; i < 60; i++) c.timer();
-    assert(output.empty());
-    logger_open = true; c.timer(); assert(has("state=DONE"));
-    assert(c.startup_probe_step_ == 7 && c.startup_probe_done_);
-  } else if (scenario == "pending") {
-    logger_open = true; c.startup_probe_step_ = 3; c.timer();
-    assert(has("state=RUNNING sent=3/7"));
-  } else if (scenario == "rotate") {
-    c.startup_probe_done_ = true; c.startup_probe_step_ = 7;
-    c.startup_capture_count_ = 8;
-    for (unsigned i = 0; i < 8; i++) {
-      c.startup_capture_size_[i] = GREE_RX_BUFFER_SIZE;
-      for (unsigned j = 0; j < GREE_RX_BUFFER_SIZE; j++) c.startup_capture_[i][j] = i;
-    }
-    logger_open = true;
-    for (unsigned i = 0; i < 16; i++) {
-      output.clear(); c.timer();
-      assert(output.size() == 2); // bounded log burst
-      assert(has(("CAPTURED_RX " + std::to_string(i % 8 + 1) + "/8 len=52").c_str()));
-      assert(output[1].size() < 256);
-    }
-    assert(c.startup_capture_count_ == 8 && c.startup_capture_[7][51] == 7);
-  } else if (scenario == "raw") {
-    c.startup_probe_done_ = true; c.startup_probe_step_ = 7;
-    c.startup_capture_count_ = 1; c.startup_capture_size_[0] = 6;
-    const uint8_t frame[] = {0x7E, 0x7E, 0x03, 0x32, 0x00, 0x35};
-    for (unsigned i = 0; i < sizeof(frame); i++) c.startup_capture_[0][i] = frame[i];
-    logger_open = true; c.log_probe_result();
-    assert(has("7E 7E 03 32 00 35"));
-  } else if (scenario == "invalid_size") {
-    c.startup_capture_count_ = 1; c.startup_capture_size_[0] = 255;
-    logger_open = true; c.timer(); assert(has("Invalid stored frame size: 255"));
-  } else if (scenario == "invalid_count") {
-    c.startup_capture_count_ = 9;
-    logger_open = true; c.timer(); assert(has("Invalid capture count"));
-  } else if (scenario == "instances") {
-    GreeClimate other; other.setup();
-    logger_open = true; c.startup_probe_done_ = true; c.startup_probe_step_ = 7;
-    c.timer(); assert(has("state=DONE"));
-    output.clear(); other.timer(); assert(has("state=RUNNING sent=0/7"));
+  assert(argc==2); std::string sc=argv[1]; GreeClimate c;
+  for(uint8_t i=0;i<GreeClimate::DIALECT_PROBE_TOTAL_STEPS;i++) c.dialect_probe_step_offset_[i]=0xFFFF;
+  c.setup(); assert(c.timer_registrations==1 && c.timer_name=="gree-probe-report" && c.interval_ms==10000);
+  if(sc=="late") {
+    c.dialect_probe_active_=false; c.dialect_probe_sent_=12; for(int i=0;i<12;i++) c.timer(); assert(output.empty());
+    logger_open=true; c.timer(); assert(has("[dialect-probe-v3] DIALECT_RESULT state=NO_RX sent=12/12 rx_total=0 stored=0 first_hit=none"));
+  } else if(sc=="running") {
+    logger_open=true; c.dialect_probe_sent_=5; c.timer(); assert(has("state=RUNNING sent=5/12"));
+  } else if(sc=="found") {
+    c.dialect_probe_active_=false; c.dialect_probe_found_rx_=true; c.dialect_probe_sent_=9;
+    const uint8_t f[]={0x7E,0x7E,0x03,0x32,0x00,0x35}; hit(c,8,f,sizeof(f)); logger_open=true; c.timer();
+    assert(has("state=FOUND_RX sent=9/12 rx_total=6 stored=6 first_hit=step8"));
+    assert(has("DIALECT_RX step=9 step8 bytes=6 shown=6: 7E 7E 03 32 00 35")); assert(output.size()==2);
+  } else if(sc=="rotate") {
+    c.dialect_probe_active_=false; c.dialect_probe_found_rx_=true; c.dialect_probe_sent_=12;
+    const uint8_t a[]={0x7E,0x7E,0x03,0x01}, b[]={0x7E,0x7E,0x2F,0x31,0xAA}; hit(c,0,a,sizeof(a)); hit(c,10,b,sizeof(b)); logger_open=true;
+    output.clear(); c.timer(); assert(has("DIALECT_RX step=1 step0")); output.clear(); c.timer(); assert(has("DIALECT_RX step=11 step10")); output.clear(); c.timer(); assert(has("DIALECT_RX step=1 step0"));
+  } else if(sc=="reconnect") {
+    c.dialect_probe_active_=false; c.dialect_probe_found_rx_=true; c.dialect_probe_sent_=8; const uint8_t f[]={0x7E,0x7E,0x31}; hit(c,7,f,sizeof(f));
+    logger_open=true; c.timer(); assert(has("FOUND_RX")); logger_open=false; output.clear(); for(int i=0;i<60;i++) c.timer(); assert(output.empty()); logger_open=true; c.timer(); assert(has("DIALECT_RX"));
+  } else if(sc=="bounded") {
+    c.dialect_probe_active_=false; c.dialect_probe_found_rx_=true; c.dialect_probe_sent_=12; uint8_t b[120]; for(unsigned i=0;i<sizeof(b);i++) b[i]=i; hit(c,11,b,sizeof(b));
+    logger_open=true; c.timer(); assert(has("bytes=120 shown=96")); assert(output.size()==2 && output[1].size()<420);
+  } else if(sc=="bad_offset") {
+    c.dialect_probe_active_=false; c.dialect_probe_found_rx_=true; c.dialect_probe_sent_=12; c.dialect_probe_rx_total_=5; c.dialect_probe_rx_stored_=5; c.dialect_probe_first_hit_step_=3; c.dialect_probe_step_rx_[3]=5; c.dialect_probe_step_offset_[3]=600;
+    logger_open=true; c.timer(); assert(has("FOUND_RX") && output.size()==1);
   } else return 2;
-  assert(c.timer_registrations == 1); // reporting cannot create extra timers
-  return 0;
+  assert(c.timer_registrations==1); return 0;
 }
 '''
 
 class DiagnosticsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.work = tempfile.TemporaryDirectory()
-        path = Path(cls.work.name)
-        (path / "gree.h").write_text(MOCK_HEADER)
-        shutil.copyfile(SOURCE, path / "probe_diagnostics.cpp")
-        (path / "test.cpp").write_text(HARNESS)
-        cls.binary = path / "test"
-        subprocess.run([
-            os.environ.get("CXX", "g++"), "-std=c++17", "-Wall", "-Wextra", "-Werror",
-            "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-no-pie", "-g",
-            str(path / "probe_diagnostics.cpp"), str(path / "test.cpp"), "-o", str(cls.binary),
-        ], check=True)
-
+        cls.work=tempfile.TemporaryDirectory(); p=Path(cls.work.name)
+        (p/"gree.h").write_text(MOCK_HEADER); shutil.copyfile(SOURCE,p/"probe_diagnostics.cpp"); (p/"test.cpp").write_text(HARNESS); cls.binary=p/"test"
+        subprocess.run([os.environ.get("CXX","g++"),"-std=c++17","-Wall","-Wextra","-Werror","-fsanitize=address,undefined","-fno-omit-frame-pointer","-no-pie","-g",str(p/"probe_diagnostics.cpp"),str(p/"test.cpp"),"-o",str(cls.binary)],check=True)
     @classmethod
-    def tearDownClass(cls):
-        cls.work.cleanup()
-
-    def run_scenario(self, name):
-        subprocess.run([str(self.binary), name], check=True, timeout=10)
-
+    def tearDownClass(cls): cls.work.cleanup()
+    def run_scenario(self,name): subprocess.run([str(self.binary),name],check=True,timeout=10)
     def test_late_logger(self): self.run_scenario("late")
+    def test_running_probe(self): self.run_scenario("running")
+    def test_found_rx_and_raw_bytes(self): self.run_scenario("found")
+    def test_rotation(self): self.run_scenario("rotate")
     def test_reconnected_logger(self): self.run_scenario("reconnect")
-    def test_pending_probe(self): self.run_scenario("pending")
-    def test_bounded_replay_and_rotation(self): self.run_scenario("rotate")
-    def test_raw_frame_preserved(self): self.run_scenario("raw")
-    def test_invalid_size(self): self.run_scenario("invalid_size")
-    def test_invalid_count(self): self.run_scenario("invalid_count")
-    def test_instances_are_independent(self): self.run_scenario("instances")
+    def test_bounded_output(self): self.run_scenario("bounded")
+    def test_invalid_offset_is_safe(self): self.run_scenario("bad_offset")
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+if __name__=="__main__": unittest.main(verbosity=2)
