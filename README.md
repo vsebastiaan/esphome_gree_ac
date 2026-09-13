@@ -1,5 +1,7 @@
 > **Tosot GWH18 / Wemos D1 mini:** this fork now also contains a hardware-tested UART replacement path for the Tosot GWH18AAD-K6DNA1B/I. It uses 4800 8E1, a transistor-inverted TX path, an RX divider, and an unusual but repeatably necessary GPIO14/D5 startup kick on the tested unit. See [`docs/tosot-gwh18aad.md`](docs/tosot-gwh18aad.md) and [`examples/tosot-gwh18aad-live-test.yaml`](examples/tosot-gwh18aad-live-test.yaml).
 >
+> The GWH18 test profile keeps unverified functions clearly prefixed with `EXP -` (including **Turbo**) until they have been checked on the physical unit. This prevents family-level Gree/Sinclair mappings from being presented as proven Tosot behaviour.
+>
 > **Diagnostic fork (vsebastiaan):** adds a UART response-timeout retry so a single missed AC reply cannot leave `wait_response_` latched forever. This is intentionally a minimal diagnostic change on top of `gekkehenkie11/esphome_gree_ac`.
 
 # Open source WIFI module replacement for Gree protocol based AC's for Home Assistant.
