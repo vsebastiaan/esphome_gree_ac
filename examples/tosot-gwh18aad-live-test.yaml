@@ -20,8 +20,8 @@
 # with this transistor RX interface. The transistor interface fixed cold-start
 # RX immediately on the tested GWH18.
 #
-# The component auto-creates the normal GWH18 controls and EXP test switches,
-# so the climate block intentionally stays minimal.
+# Normal GWH18 controls are auto-created. Unverified family-level functions
+# remain opt-in so they do not clutter a normal Homey/ESPHome device.
 
 esphome:
   name: airco-huiskamer
@@ -74,13 +74,26 @@ climate:
     name: "Airco huiskamer"
     uart_id: ac_uart
 
+    # Optional controlled tests. Uncomment only when you want to investigate
+    # these family-level mappings on real hardware.
+    # save_select:
+    #   name: "TEST - Save / Eco"
+    # xfan_select:
+    #   name: "TEST - X-Fan"
+    # plasma_select:
+    #   name: "TEST - Health / Plasma"
+    # beeper_select:
+    #   name: "TEST - Beeper"
+
 # Auto-created entities:
 #   Fan snelheid          Auto / Laag / Midden / Hoog
 #   Verticale lamel       Swing / Hoogste / Hoog / Midden / Laag / Laagste
 #   Display               Uit / Aan
-#   EXP - Turbo
-#   EXP - Sleep
-#   EXP - X-Fan
-#   EXP - Save / Eco
-#   EXP - Health / Plasma
-#   EXP - Beeper
+#   Turbo                 hardware-tested
+#   Sleep                 command accepted; behavioural effect is gradual
+#
+# Opt-in test entities:
+#   TEST - Save / Eco     AC acknowledges; actual energy effect not yet proven
+#   TEST - X-Fan          expected coil-dry function after COOL/DRY shutdown
+#   TEST - Health / Plasma AC acknowledges; fitted hardware/effect unknown
+#   TEST - Beeper         no useful effect observed on the tested GWH18
