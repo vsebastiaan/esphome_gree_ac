@@ -86,14 +86,16 @@ climate:
     #   name: "TEST - Beeper"
 
 # Auto-created entities:
-#   Fan snelheid          Auto / Laag / Midden / Hoog
+#   Ventilatorsnelheid    Automatisch / Laag / Midden / Hoog / Turbo
 #   Verticale lamel       Swing / Hoogste / Hoog / Midden / Laag / Laagste
 #   Display               Uit / Aan
-#   Turbo                 hardware-tested
-#   Sleep                 command accepted; behavioural effect is gradual
+#   Slaapstand            Uit / Aan
+#
+# Homey localises the standard climate modes to Dutch, e.g.:
+#   Automatisch / Koelen / Verwarmen / Ontvochtigen / Alleen ventileren / Uit
 #
 # Opt-in test entities:
-#   TEST - Save / Eco     AC acknowledges; actual energy effect not yet proven
-#   TEST - X-Fan          expected coil-dry function after COOL/DRY shutdown
+#   TEST - Save / Eco      AC acknowledges; actual energy effect not yet proven
+#   TEST - X-Fan           expected coil-dry function after COOL/DRY shutdown
 #   TEST - Health / Plasma AC acknowledges; fitted hardware/effect unknown
-#   TEST - Beeper         no useful effect observed on the tested GWH18
+#   TEST - Beeper          no useful effect observed on the tested GWH18
