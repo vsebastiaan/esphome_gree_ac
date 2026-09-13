@@ -54,7 +54,6 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   static constexpr uint32_t RECOVERY_KICK_TIMEOUT_MS = 5000;
   static constexpr uint8_t RX_BUFFER_SIZE = 64;
 
-  // RX path intentionally mirrors the known-good gree_replay implementation.
   void consume_rx_byte_(uint8_t value);
   void finish_rx_frame_();
   void reset_rx_parser_();
@@ -147,30 +146,44 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   bool desired_xfan_{false};
   bool desired_save_{false};
 
-  // 0 = passive polling, 2 = AF control pending, 1 = clear-control pending.
   uint8_t control_stage_{0};
 };
 
-// Exact GWH18 behaviour observed on hardware. This thin model-specific layer
-// intentionally keeps the proven v5 UART protocol implementation above, while
-// exposing only UI controls that the physical Tosot actually implements.
 class TosotGWH18AC : public TosotAC {
  public:
   climate::ClimateTraits traits() override;
   void loop() override;
 
-  // GWH18-specific UI mappings.
   void set_fan_speed_select(select::Select *value);
   void set_vertical_swing_select(select::Select *value);
   void set_display_select(select::Select *value);
+  void set_turbo_select(select::Select *value);
+  void set_plasma_select(select::Select *value);
+  void set_beeper_select(select::Select *value);
+  void set_sleep_select(select::Select *value);
+  void set_xfan_select(select::Select *value);
+  void set_save_select(select::Select *value);
 
  protected:
   select::Select *gwh18_fan_speed_select_{nullptr};
   select::Select *gwh18_vertical_swing_select_{nullptr};
   select::Select *gwh18_display_select_{nullptr};
+  select::Select *gwh18_turbo_select_{nullptr};
+  select::Select *gwh18_plasma_select_{nullptr};
+  select::Select *gwh18_beeper_select_{nullptr};
+  select::Select *gwh18_sleep_select_{nullptr};
+  select::Select *gwh18_xfan_select_{nullptr};
+  select::Select *gwh18_save_select_{nullptr};
+
   uint8_t gwh18_last_fan_ui_code_{0xFF};
   uint8_t gwh18_last_vertical_ui_code_{0xFF};
   int8_t gwh18_last_display_ui_index_{-1};
+  int8_t gwh18_last_turbo_ui_index_{-1};
+  int8_t gwh18_last_plasma_ui_index_{-1};
+  int8_t gwh18_last_beeper_ui_index_{-1};
+  int8_t gwh18_last_sleep_ui_index_{-1};
+  int8_t gwh18_last_xfan_ui_index_{-1};
+  int8_t gwh18_last_save_ui_index_{-1};
 };
 
 }  // namespace tosot_ac
