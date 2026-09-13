@@ -7,22 +7,34 @@ namespace tosot_ac {
 
 static const char *const TAG_GWH18 = "tosot_ac.gwh18";
 
+static const char *const GWH18_FAN_OPTIONS[] = {
+    "Auto",
+    "Laag",
+    "Midden",
+    "Hoog",
+};
+
 static const char *const GWH18_VERTICAL_OPTIONS[] = {
-    "1 - Volledige swing",
-    "2 - Hoogste vaste stand",
-    "3 - Hoge vaste stand",
-    "4 - Middenstand",
-    "5 - Lage vaste stand",
-    "6 - Laagste vaste stand",
+    "Swing",
+    "Hoogste",
+    "Hoog",
+    "Midden",
+    "Laag",
+    "Laagste",
 };
 
 static const char *const GWH18_DISPLAY_OPTIONS[] = {
-    "0 - Uit",
-    "1 - Settemperatuur",
+    "Uit",
+    "Aan",
 };
 
 climate::ClimateTraits TosotGWH18AC::traits() {
   auto traits = TosotAC::traits();
+
+  // Homey labels the generic climate fan field simply as "Mode". On this GWH18
+  // that is confusing next to the real thermostat mode, so expose fan speed as
+  // a separate named select instead.
+  traits.set_supported_fan_modes({});
 
   // Hardware test on the GWH18 showed that the generic ESPHome swing modes are
   // misleading for this unit: OFF does not stop the louver and the family-level
@@ -37,6 +49,12 @@ void TosotGWH18AC::loop() {
 
   if (!this->ready_)
     return;
+
+  if (this->gwh18_fan_speed_select_ != nullptr && this->last_fan_code_ <= 3 &&
+      this->last_fan_code_ != this->gwh18_last_fan_ui_code_) {
+    this->gwh18_last_fan_ui_code_ = this->last_fan_code_;
+    this->gwh18_fan_speed_select_->publish_state(GWH18_FAN_OPTIONS[this->last_fan_code_]);
+  }
 
   if (this->gwh18_vertical_swing_select_ != nullptr) {
     uint8_t ui_code = 0xFF;
@@ -55,14 +73,37 @@ void TosotGWH18AC::loop() {
   }
 
   if (this->gwh18_display_select_ != nullptr) {
-    // Hardware test: the useful states are simply display off or showing the set
-    // temperature. Other family-level display modes are not exposed on this unit.
+    // Hardware test: the useful states are simply display off or on. When on,
+    // this model shows the set temperature.
     const int8_t display_index = this->actual_display_power_ ? 1 : 0;
     if (display_index != this->gwh18_last_display_ui_index_) {
       this->gwh18_last_display_ui_index_ = display_index;
       this->gwh18_display_select_->publish_state(GWH18_DISPLAY_OPTIONS[display_index]);
     }
   }
+}
+
+void TosotGWH18AC::set_fan_speed_select(select::Select *value) {
+  this->gwh18_fan_speed_select_ = value;
+  value->add_on_state_callback([this](size_t index) {
+    if (index > 3)
+      return;
+
+    uint8_t protocol_code = static_cast<uint8_t>(index);
+    // DRY only accepts low fan on this protocol family.
+    if (this->desired_power_ && this->desired_mode_code_ == 2)
+      protocol_code = 1;
+
+    if (protocol_code == this->desired_fan_code_ && !this->desired_turbo_)
+      return;
+
+    this->desired_fan_code_ = protocol_code;
+    // Manual fan selection exits Turbo, same behaviour as the generic control.
+    this->desired_turbo_ = false;
+    ESP_LOGI(TAG_GWH18, "Fan speed request ui=%u protocol=%u", static_cast<unsigned>(index),
+             static_cast<unsigned>(protocol_code));
+    this->queue_control_("gwh18-fan-speed");
+  });
 }
 
 void TosotGWH18AC::set_vertical_swing_select(select::Select *value) {
@@ -100,7 +141,7 @@ void TosotGWH18AC::set_display_select(select::Select *value) {
     if (power)
       this->desired_display_mode_ = mode;
 
-    ESP_LOGI(TAG_GWH18, "Display request=%s", power ? "set-temperature" : "off");
+    ESP_LOGI(TAG_GWH18, "Display request=%s", power ? "on" : "off");
     this->queue_control_("gwh18-display");
   });
 }
