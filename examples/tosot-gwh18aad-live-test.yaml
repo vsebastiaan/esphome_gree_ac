@@ -77,6 +77,8 @@ climate:
       name: "Display"
 
     # Experimental / verification round.
+    # Turbo should be tested in COOL and HEAT. Related Gree UART captures show
+    # byte 10 changing 0x06->0x07 (cool) and 0x0E->0x0F (heat).
     turbo_switch:
       name: "EXP - Turbo"
     sleep_switch:
