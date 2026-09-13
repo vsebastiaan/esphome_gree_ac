@@ -1,15 +1,24 @@
 # Live-control test for Tosot GWH18AAD-K6DNA1B/I on a Wemos D1 mini.
+#
 # Confirmed wiring for this unit:
 #   GPIO1/TX -> 4.7k -> base 2N3904; emitter -> GND; collector -> BLACK (AC RX)
-#   ORANGE (AC TX) -> 4.7k -> RX node -> GPIO3
+#   ORANGE (AC TX) -> 4.7k -> RX node -> GPIO3/D1 RX
 #   RX node -> 10k -> GND
 #   GPIO14 / D5 -> 4.7k -> RX node   (short automatic startup/recovery kick)
 #   BROWN -> GND
 #
-# TX is inverted in software because the NPN transistor inverts it.
-# D5 is normally high-impedance. The driver drives it HIGH for 100 ms at boot,
-# then releases it. If no valid 2F/31 report arrives it retries after 2 seconds;
-# after communication is established it only retries after a 5-second RX timeout.
+# Important:
+# - AC TX is D1 RX (ORANGE -> GPIO3 through the divider).
+# - D1 TX is AC RX (GPIO1 -> NPN inverter -> BLACK).
+# - D5 must NOT be connected directly to the RX node; use the 4.7k series resistor.
+# - TX is inverted in software because the NPN transistor inverts it.
+# - D5 is normally high-impedance. The driver drives it HIGH for 100 ms at boot,
+#   then releases it. On the tested GWH18 the UART did not reliably start after a
+#   cold reset without this kick. If no valid 2F/31 report arrives, the kick is
+#   retried; after communication is established it is only used for RX recovery.
+#
+# The EXP-prefixed entities are deliberately separated from the normal controls.
+# They are protocol-family mappings that should be verified on the physical unit.
 
 esphome:
   name: airco-huiskamer
@@ -20,7 +29,7 @@ esp8266:
 
 logger:
   baud_rate: 0
-  level: INFO
+  level: DEBUG
 
 api:
   encryption:
@@ -47,7 +56,10 @@ uart:
   rx_buffer_size: 512
 
 external_components:
-  - source: github://vsebastiaan/esphome_gree_ac@main
+  - source:
+      type: git
+      url: https://github.com/vsebastiaan/esphome_gree_ac
+      ref: b142a23fbb9c292c1e4d054c14b34acdb57a0254
     components: [tosot_ac]
     refresh: 0s
 
@@ -57,3 +69,23 @@ climate:
     name: "Airco huiskamer"
     uart_id: ac_uart
     kick_pin: GPIO14
+
+    # Hardware-confirmed GWH18 controls.
+    vertical_swing_select:
+      name: "Verticale lamel"
+    display_select:
+      name: "Display"
+
+    # Experimental / verification round.
+    turbo_switch:
+      name: "EXP - Turbo"
+    sleep_switch:
+      name: "EXP - Sleep"
+    xfan_switch:
+      name: "EXP - X-Fan"
+    save_switch:
+      name: "EXP - Save / Eco"
+    plasma_switch:
+      name: "EXP - Health / Plasma"
+    beeper_switch:
+      name: "EXP - Beeper"
