@@ -13,12 +13,12 @@ CONF_FAN_SPEED_SELECT = "fan_speed_select"
 CONF_VERTICAL_SWING_SELECT = "vertical_swing_select"
 CONF_DISPLAY_SELECT = "display_select"
 
-CONF_TURBO_SWITCH = "turbo_switch"
-CONF_PLASMA_SWITCH = "plasma_switch"
-CONF_BEEPER_SWITCH = "beeper_switch"
-CONF_SLEEP_SWITCH = "sleep_switch"
-CONF_XFAN_SWITCH = "xfan_switch"
-CONF_SAVE_SWITCH = "save_switch"
+CONF_TURBO_SELECT = "turbo_select"
+CONF_PLASMA_SELECT = "plasma_select"
+CONF_BEEPER_SELECT = "beeper_select"
+CONF_SLEEP_SELECT = "sleep_select"
+CONF_XFAN_SELECT = "xfan_select"
+CONF_SAVE_SELECT = "save_select"
 
 # Exact behaviour measured on the Tosot GWH18 hardware.
 FAN_SPEED_OPTIONS = [
@@ -37,10 +37,12 @@ VERTICAL_SWING_OPTIONS = [
     "Laagste",
 ]
 
-DISPLAY_OPTIONS = [
+ON_OFF_OPTIONS = [
     "Uit",
     "Aan",
 ]
+
+DISPLAY_OPTIONS = ON_OFF_OPTIONS
 
 tosot_ac_ns = cg.esphome_ns.namespace("tosot_ac")
 TosotGWH18AC = tosot_ac_ns.class_(
@@ -49,9 +51,6 @@ TosotGWH18AC = tosot_ac_ns.class_(
 TosotACSwitch = tosot_ac_ns.class_("TosotACSwitch", switch.Switch, cg.Component)
 TosotACSelect = tosot_ac_ns.class_("TosotACSelect", select.Select, cg.Component)
 
-switch_schema = switch.switch_schema(switch.Switch).extend(cv.COMPONENT_SCHEMA).extend(
-    {cv.GenerateID(): cv.declare_id(TosotACSwitch)}
-)
 select_schema = select.select_schema(select.Select).extend(
     {cv.GenerateID(CONF_ID): cv.declare_id(TosotACSelect)}
 )
@@ -61,13 +60,11 @@ CONFIG_SCHEMA = cv.All(
     SCHEMA.extend(
         {
             cv.GenerateID(): cv.declare_id(TosotGWH18AC),
-            # High-impedance in normal operation. The C++ driver switches this
-            # pin to OUTPUT/HIGH only for a short RX-start kick.
             cv.Optional(CONF_KICK_PIN): pins.gpio_input_pin_schema,
 
-            # GWH18 controls are created by default so a minimal climate block
-            # cannot accidentally omit part of the Homey/ESPHome UI. Explicit
-            # YAML still overrides these names/settings when desired.
+            # Use selects for every GWH18 sub-control. Homey exposes these on the
+            # climate device, while standalone ESPHome switch entities were not
+            # shown in the same Homey control screen.
             cv.Optional(
                 CONF_FAN_SPEED_SELECT, default={"name": "Fan snelheid"}
             ): select_schema,
@@ -78,23 +75,23 @@ CONFIG_SCHEMA = cv.All(
                 CONF_DISPLAY_SELECT, default={"name": "Display"}
             ): select_schema,
             cv.Optional(
-                CONF_TURBO_SWITCH, default={"name": "EXP - Turbo"}
-            ): switch_schema,
+                CONF_TURBO_SELECT, default={"name": "EXP - Turbo"}
+            ): select_schema,
             cv.Optional(
-                CONF_SLEEP_SWITCH, default={"name": "EXP - Sleep"}
-            ): switch_schema,
+                CONF_SLEEP_SELECT, default={"name": "EXP - Sleep"}
+            ): select_schema,
             cv.Optional(
-                CONF_XFAN_SWITCH, default={"name": "EXP - X-Fan"}
-            ): switch_schema,
+                CONF_XFAN_SELECT, default={"name": "EXP - X-Fan"}
+            ): select_schema,
             cv.Optional(
-                CONF_SAVE_SWITCH, default={"name": "EXP - Save / Eco"}
-            ): switch_schema,
+                CONF_SAVE_SELECT, default={"name": "EXP - Save / Eco"}
+            ): select_schema,
             cv.Optional(
-                CONF_PLASMA_SWITCH, default={"name": "EXP - Health / Plasma"}
-            ): switch_schema,
+                CONF_PLASMA_SELECT, default={"name": "EXP - Health / Plasma"}
+            ): select_schema,
             cv.Optional(
-                CONF_BEEPER_SWITCH, default={"name": "EXP - Beeper"}
-            ): switch_schema,
+                CONF_BEEPER_SELECT, default={"name": "EXP - Beeper"}
+            ): select_schema,
         }
     ),
 )
@@ -114,23 +111,15 @@ async def to_code(config):
         CONF_FAN_SPEED_SELECT: FAN_SPEED_OPTIONS,
         CONF_VERTICAL_SWING_SELECT: VERTICAL_SWING_OPTIONS,
         CONF_DISPLAY_SELECT: DISPLAY_OPTIONS,
+        CONF_TURBO_SELECT: ON_OFF_OPTIONS,
+        CONF_SLEEP_SELECT: ON_OFF_OPTIONS,
+        CONF_XFAN_SELECT: ON_OFF_OPTIONS,
+        CONF_SAVE_SELECT: ON_OFF_OPTIONS,
+        CONF_PLASMA_SELECT: ON_OFF_OPTIONS,
+        CONF_BEEPER_SELECT: ON_OFF_OPTIONS,
     }
     for key, options in select_options.items():
         conf = config[key]
         entity = await select.new_select(conf, options=options)
         await cg.register_component(entity, conf)
-        cg.add(getattr(var, f"set_{key}")(entity))
-
-    for key in [
-        CONF_TURBO_SWITCH,
-        CONF_PLASMA_SWITCH,
-        CONF_BEEPER_SWITCH,
-        CONF_SLEEP_SWITCH,
-        CONF_XFAN_SWITCH,
-        CONF_SAVE_SWITCH,
-    ]:
-        conf = config[key]
-        entity = cg.new_Pvariable(conf[CONF_ID])
-        await cg.register_component(entity, conf)
-        await switch.register_switch(entity, conf)
         cg.add(getattr(var, f"set_{key}")(entity))
