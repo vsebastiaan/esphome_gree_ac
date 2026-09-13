@@ -9,6 +9,7 @@ DEPENDENCIES = ["uart"]
 
 CONF_KICK_PIN = "kick_pin"
 
+CONF_FAN_SPEED_SELECT = "fan_speed_select"
 CONF_VERTICAL_SWING_SELECT = "vertical_swing_select"
 CONF_DISPLAY_SELECT = "display_select"
 
@@ -20,18 +21,25 @@ CONF_XFAN_SWITCH = "xfan_switch"
 CONF_SAVE_SWITCH = "save_switch"
 
 # Exact behaviour measured on the Tosot GWH18 hardware.
+FAN_SPEED_OPTIONS = [
+    "Auto",
+    "Laag",
+    "Midden",
+    "Hoog",
+]
+
 VERTICAL_SWING_OPTIONS = [
-    "1 - Volledige swing",
-    "2 - Hoogste vaste stand",
-    "3 - Hoge vaste stand",
-    "4 - Middenstand",
-    "5 - Lage vaste stand",
-    "6 - Laagste vaste stand",
+    "Swing",
+    "Hoogste",
+    "Hoog",
+    "Midden",
+    "Laag",
+    "Laagste",
 ]
 
 DISPLAY_OPTIONS = [
-    "0 - Uit",
-    "1 - Settemperatuur",
+    "Uit",
+    "Aan",
 ]
 
 tosot_ac_ns = cg.esphome_ns.namespace("tosot_ac")
@@ -56,6 +64,7 @@ CONFIG_SCHEMA = cv.All(
             # High-impedance in normal operation. The C++ driver switches this
             # pin to OUTPUT/HIGH only for a short RX-start kick.
             cv.Optional(CONF_KICK_PIN): pins.gpio_input_pin_schema,
+            cv.Optional(CONF_FAN_SPEED_SELECT): select_schema,
             cv.Optional(CONF_VERTICAL_SWING_SELECT): select_schema,
             cv.Optional(CONF_DISPLAY_SELECT): select_schema,
             cv.Optional(CONF_TURBO_SWITCH): switch_schema,
@@ -80,6 +89,7 @@ async def to_code(config):
         cg.add(var.set_kick_pin(pin))
 
     select_options = {
+        CONF_FAN_SPEED_SELECT: FAN_SPEED_OPTIONS,
         CONF_VERTICAL_SWING_SELECT: VERTICAL_SWING_OPTIONS,
         CONF_DISPLAY_SELECT: DISPLAY_OPTIONS,
     }
