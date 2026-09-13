@@ -44,20 +44,22 @@ climate:
     uart_id: ac_uart
     kick_pin: GPIO14
 
+    fan_speed_select:
+      name: "Fan snelheid"
     vertical_swing_select:
-      name: "Tosot Vertical Louver"
+      name: "Verticale lamel"
     display_select:
-      name: "Tosot Display"
+      name: "Display"
 
     turbo_switch:
-      name: "Tosot Turbo"
-    plasma_switch:
-      name: "Tosot Health Plasma"
-    beeper_switch:
-      name: "Tosot Beeper"
+      name: "EXP - Turbo"
     sleep_switch:
-      name: "Tosot Sleep"
+      name: "EXP - Sleep"
     xfan_switch:
-      name: "Tosot X-Fan"
+      name: "EXP - X-Fan"
     save_switch:
-      name: "Tosot Save Eco"
+      name: "EXP - Save / Eco"
+    plasma_switch:
+      name: "EXP - Health / Plasma"
+    beeper_switch:
+      name: "EXP - Beeper"
