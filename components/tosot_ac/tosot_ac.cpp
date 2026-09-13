@@ -54,23 +54,20 @@ static const char *const DISPLAY_OPTIONS[] = {
 
 static const char *const DISPLAY_UNIT_OPTIONS[] = {"C", "F"};
 
-static bool is_mapped_report_byte(uint8_t index) {
+static uint8_t known_report_mask(uint8_t index) {
   switch (index) {
-    case 4:   // plasma/health mirror bit
-    case 8:   // power, mode, sleep and fan
-    case 9:   // target temperature
-    case 10:  // turbo, display power, plasma/health and X-Fan
-    case 11:  // temperature/display flags
-    case 12:  // horizontal and vertical swing
-    case 13:  // display mode
-    case 15:  // save/eco
-    case 20:  // quiet flag
-    case 22:  // detailed fan speed
-    case 44:  // beeper flag
-    case 46:  // indoor temperature
-      return true;
-    default:
-      return false;
+    case 8: return 0xFB;   // power, mode, sleep, fan; bit 2 remains unknown
+    case 9: return 0xF0;   // target temperature
+    case 10: return 0x0F;  // turbo, display power, health candidate, X-Fan
+    case 11: return 0xC2;  // display unit, temperature flag, stock constant bit
+    case 12: return 0xF7;  // vertical + horizontal swing; bit 3 remains unknown
+    case 13: return 0x30;  // display mode; other bits are still discovery territory
+    case 15: return 0x40;  // save/eco candidate
+    case 20: return 0x08;  // quiet candidate (observed in related dialects)
+    case 22: return 0x0F;  // detailed fan-speed candidate
+    case 44: return 0x01;  // beeper/mute candidate
+    case 46: return 0xFF;  // indoor temperature
+    default: return 0x00;
   }
 }
 
@@ -345,8 +342,10 @@ void TosotAC::log_report_delta_(const std::vector<uint8_t> &frame) const {
   for (uint8_t i = 4; i + 1 < frame.size(); i++) {
     if (frame[i] == this->last_report_[i])
       continue;
-    ESP_LOGD(TAG, "[%s] RX DELTA byte=%u 0x%02X->0x%02X %s", VERSION, i, this->last_report_[i], frame[i],
-             is_mapped_report_byte(i) ? "mapped" : "UNMAPPED");
+    const uint8_t changed_bits = static_cast<uint8_t>(this->last_report_[i] ^ frame[i]);
+    const uint8_t unknown_bits = static_cast<uint8_t>(changed_bits & static_cast<uint8_t>(~known_report_mask(i)));
+    ESP_LOGD(TAG, "[%s] RX DELTA byte=%u 0x%02X->0x%02X known_mask=0x%02X unknown_bits=0x%02X", VERSION, i,
+             this->last_report_[i], frame[i], known_report_mask(i), unknown_bits);
   }
 }
 
@@ -438,10 +437,10 @@ void TosotAC::send_control_(bool af) {
 std::vector<uint8_t> TosotAC::build_control_frame_(bool af) const {
   std::vector<uint8_t> frame(STOCK_POLL, STOCK_POLL + sizeof(STOCK_POLL));
 
-  // Only copy bytes that are known to carry writable state. Do not mirror the
-  // entire report into a set packet: unmapped bytes may be telemetry.
+  // Only copy bytes that v4 already proved safe as writable state carriers.
+  // Do not mirror report-only/telemetry bytes into a set packet.
   if (this->last_report_.size() == 50) {
-    for (const uint8_t index : {4, 10, 11, 12, 13, 15, 20, 44})
+    for (const uint8_t index : {10, 11, 12, 13, 15, 44})
       frame[index] = this->last_report_[index];
   }
 
@@ -459,10 +458,10 @@ std::vector<uint8_t> TosotAC::build_control_frame_(bool af) const {
 
   const int target = static_cast<int>(std::round(this->desired_target_temperature_));
   const uint8_t target_nibble = static_cast<uint8_t>((std::max(16, std::min(30, target)) - 16) << 4);
-  frame[9] = static_cast<uint8_t>((this->last_report_.size() == 50 ? this->last_report_[9] : 0x00) & 0x0F);
-  frame[9] |= target_nibble;
+  // Keep the proven v4 behaviour: low nibble is cleared in outbound set packets.
+  frame[9] = target_nibble;
 
-  // frame[10]: TURBO(0), DISPLAY(1), PLASMA/HEALTH(2), X-FAN(3)
+  // frame[10]: TURBO(0), DISPLAY(1), HEALTH candidate(2), X-FAN(3)
   frame[10] &= 0xF0;
   if (this->desired_turbo_)
     frame[10] |= 0x01;
@@ -472,11 +471,6 @@ std::vector<uint8_t> TosotAC::build_control_frame_(bool af) const {
     frame[10] |= 0x04;
   if (this->desired_xfan_)
     frame[10] |= 0x08;
-
-  // The second plasma/health mirror bit lives at frame[4].
-  frame[4] &= static_cast<uint8_t>(~0x04);
-  if (this->desired_plasma_)
-    frame[4] |= 0x04;
 
   // frame[11] bit 1 is part of the stock set packet; bit 7 selects Fahrenheit.
   frame[11] |= 0x02;
@@ -496,7 +490,7 @@ std::vector<uint8_t> TosotAC::build_control_frame_(bool af) const {
   if (this->desired_save_)
     frame[15] |= 0x40;
 
-  // Beeper is inverted on the wire: bit set means muted/off.
+  // Beeper is inverted on the related protocol dialect: bit set means muted/off.
   frame[44] &= static_cast<uint8_t>(~0x01);
   if (!this->desired_beeper_)
     frame[44] |= 0x01;
@@ -523,7 +517,7 @@ void TosotAC::decode_report_(const std::vector<uint8_t> &frame) {
   const bool sleep = (status & 0x08) != 0;
   const bool turbo = (frame[10] & 0x01) != 0;
   const bool display_power = (frame[10] & 0x02) != 0;
-  const bool plasma = (frame[10] & 0x04) != 0 || (frame[4] & 0x04) != 0;
+  const bool plasma = (frame[10] & 0x04) != 0;
   const bool xfan = (frame[10] & 0x08) != 0;
   const bool display_f = (frame[11] & 0x80) != 0;
   uint8_t horizontal_swing = static_cast<uint8_t>(frame[12] & 0x07);
