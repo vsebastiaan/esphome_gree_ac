@@ -150,40 +150,66 @@ Only two useful states are exposed:
 
 When on, this unit shows the set temperature.
 
-## Automatic UI entities
+### Turbo
 
-The GWH18 component now creates the normal controls and experimental test switches by default, so a minimal climate block is enough. The automatically exposed entities are:
+Turbo has now been physically tested on the GWH18 and works. It is therefore exposed as a normal control rather than an experimental one.
+
+### Sleep
+
+The GWH18 acknowledges the Sleep command with its normal confirmation beep. Sleep is a delayed comfort function, so its complete temperature/fan behaviour is not instantaneously visible during a short bench test. It is exposed by default, while its long-duration behaviour can still be checked in normal use.
+
+## Default UI entities
+
+A minimal climate block automatically creates:
 
 - `Fan snelheid`
 - `Verticale lamel`
 - `Display`
-- `EXP - Turbo`
-- `EXP - Sleep`
-- `EXP - X-Fan`
-- `EXP - Save / Eco`
-- `EXP - Health / Plasma`
-- `EXP - Beeper`
+- `Turbo`
+- `Sleep`
 
-## Experimental functions
+The remaining family-level functions are deliberately **not** auto-created. They can still be enabled explicitly for controlled testing.
 
-### EXP - Turbo
+## Optional / still-to-be-proven functions
 
-This is the highest-priority remaining verification. Related Gree UART captures indicate report byte 10 changes between normal and Turbo states:
+### Save / Eco
 
-- Cool normal: `0x06`
-- Cool Turbo: `0x07`
-- Heat normal: `0x0E`
-- Heat Turbo: `0x0F`
+The tested GWH18 gives its normal acknowledgement beep when the current Save/Eco mapping is sent, but the actual energy-saving behaviour has not yet been demonstrated. A beep alone proves that the indoor unit received a valid-looking command, not that the intended feature is active.
 
-### Other experimental switches
+This control is therefore opt-in only. The best follow-up test is on another air conditioner that already has reliable power metering: compare otherwise identical operating periods with Save/Eco off and on, and also verify whether the returned UART state bit follows the requested state.
 
-- `EXP - Sleep`
-- `EXP - X-Fan`
-- `EXP - Save / Eco`
-- `EXP - Health / Plasma`
-- `EXP - Beeper`
+### X-Fan
 
-These are based on closely related Gree/Sinclair packet mappings and should be promoted only after physical GWH18 verification.
+On related Gree/Tosot units, X-Fan is an evaporator-drying function rather than an extra normal fan speed. Its effect is expected mainly after switching off from COOL or DRY: the indoor fan may continue for a while to dry the coil. A quick on/off test while the unit is simply running can therefore look like "nothing happens".
+
+The mapping remains opt-in until that shutdown behaviour is reproduced on this GWH18.
+
+### Health / Plasma
+
+The unit acknowledges the mapped command with a beep, but no visible effect has yet been identified. Some related models use this for an ionizer/plasma function that is only meaningful when the corresponding hardware is actually fitted. It therefore remains opt-in.
+
+### Beeper
+
+No useful effect was observed from the current Beeper mapping on the tested GWH18. It remains available only as a protocol-test option and is not created by default.
+
+To enable any of these test controls, add them explicitly to the climate block, for example:
+
+```yaml
+climate:
+  - platform: tosot_ac
+    id: tosot_huiskamer
+    name: "Airco huiskamer"
+    uart_id: ac_uart
+
+    save_select:
+      name: "TEST - Save / Eco"
+    # xfan_select:
+    #   name: "TEST - X-Fan"
+    # plasma_select:
+    #   name: "TEST - Health / Plasma"
+    # beeper_select:
+    #   name: "TEST - Beeper"
+```
 
 ## 8 °C frost-protection / steady heat
 
@@ -207,6 +233,8 @@ The replacement module is now functionally proven on the test unit:
 - target temperature mapped
 - vertical-louvre behaviour mapped on real hardware
 - display control mapped
-- normal controls and experimental test entities exposed automatically
+- Turbo physically verified
+- Sleep accepted and exposed for normal-use verification
+- uncertain family-level functions moved behind explicit opt-in configuration
 
-The remaining work is the short experimental-function verification round, especially Turbo, followed by cleanup/merge for the public baseline.
+The remaining work is a small amount of optional feature verification and then cleanup/merge for the public baseline.
