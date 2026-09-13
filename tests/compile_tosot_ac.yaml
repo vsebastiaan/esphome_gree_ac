@@ -12,7 +12,6 @@ logger:
 api:
   encryption:
     key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-
 ota:
   - platform: esphome
 
@@ -44,3 +43,25 @@ climate:
     name: "Tosot Test"
     uart_id: ac_uart
     kick_pin: GPIO14
+
+    horizontal_swing_select:
+      name: "Tosot Horizontal Swing"
+    vertical_swing_select:
+      name: "Tosot Vertical Swing"
+    display_select:
+      name: "Tosot Display"
+    display_unit_select:
+      name: "Tosot Display Unit"
+
+    turbo_switch:
+      name: "Tosot Turbo"
+    plasma_switch:
+      name: "Tosot Health Plasma"
+    beeper_switch:
+      name: "Tosot Beeper"
+    sleep_switch:
+      name: "Tosot Sleep"
+    xfan_switch:
+      name: "Tosot X-Fan"
+    save_switch:
+      name: "Tosot Save Eco"
