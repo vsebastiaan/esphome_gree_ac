@@ -1,4 +1,4 @@
-# dialect-probe-v3 and passive-sniffer compile gate
+# dialect-probe-v3, passive-sniffer and exact-replay compile gate
 name: Test Gree diagnostics
 
 on:
@@ -7,6 +7,7 @@ on:
     paths:
       - 'components/gree_uart/**'
       - 'components/gree_sniffer/**'
+      - 'components/gree_replay/**'
       - 'tests/**'
       - '.github/workflows/test-gree-diagnostics.yml'
   workflow_dispatch:
@@ -35,3 +36,7 @@ jobs:
         run: esphome config tests/compile_gree_sniffer.yaml
       - name: Compile D1 Mini passive sniffer firmware (no upload)
         run: esphome compile tests/compile_gree_sniffer.yaml
+      - name: Validate D1 Mini exact replay fixture
+        run: esphome config tests/compile_gree_replay.yaml
+      - name: Compile D1 Mini exact replay firmware (no upload)
+        run: esphome compile tests/compile_gree_replay.yaml
