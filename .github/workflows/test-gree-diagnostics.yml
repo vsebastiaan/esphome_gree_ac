@@ -1,3 +1,4 @@
+# dialect-probe-v3 compile gate
 name: Test Gree diagnostics
 
 on:
