@@ -1,8 +1,6 @@
 # Tosot GWH18AAD-K6DNA1B/I — ESPHome UART control on Wemos D1 mini
 
-This document describes the hardware and UART behaviour measured on a real Tosot GWH18AAD-K6DNA1B/I while replacing the original CS532AE-style Wi-Fi module with a Wemos D1 mini / ESP8266.
-
-The important result after the full reverse-engineering session is that the protocol itself was not the startup problem. The AC answered normal polls, but the original resistor-divider RX input on the ESP8266 was unreliable at cold start. A second NPN transistor stage on the AC->D1 direction fixed RX startup immediately.
+This document describes the final hardware and UART behaviour measured on a real Tosot GWH18AAD-K6DNA1B/I while replacing the original CS532AE-style Wi-Fi module with a Wemos D1 mini / ESP8266.
 
 > Use at your own risk. The AC-side UART is not a native 3.3 V ESP8266 interface. Use the transistor interfaces below rather than connecting the AC UART directly to the D1.
 
@@ -64,16 +62,6 @@ This stage also inverts the signal, therefore `GPIO1` is configured with `invert
 
 **Important pull-up detail:** there is no added external pull-up resistor on BLACK in the final build. The AC itself already pulls BLACK / AC-RX high; this was measured at roughly **4.8 V** on the tested unit. The TX-side 2N3904 is therefore used as an open-collector pull-down: GPIO1 drives its base through **4.7k**, and the transistor pulls BLACK low when active. The added external pull-up in this design is the **10k from GPIO3/RX to 3.3 V** on the opposite, AC-TX -> D1-RX transistor stage.
 
-## Why the second transistor matters
-
-The original prototype used a 4.7k/10k divider from ORANGE to GPIO3. The UART protocol was already correct: the AC answered normal `2F/01` polls. The failure was that the ESP8266 sometimes saw `rx_bytes=0` after a cold start even though the AC was transmitting.
-
-During debugging, an external sniffer made GPIO3 begin receiving. Once reception had started, the sniffer could be removed and RX remained stable. Static resistor changes and multiple GPIO14/D5 kick experiments were then tried, including different series resistances and direct connection. Those experiments could not make startup deterministic.
-
-Replacing the divider with the NPN RX stage above solved the startup problem immediately on the tested unit. The likely benefit is that GPIO3 now sees a clean local 0/3.3 V digital signal referenced to the ESP8266 supply instead of a marginal analog divider waveform from the AC side.
-
-The earlier D5 startup-kick is therefore **not part of the final recommended hardware**. The driver may retain optional kick support for historical/diagnostic use, but the final tested wiring does not require it.
-
 ## Known-good ESPHome UART configuration
 
 ```yaml
@@ -91,8 +79,6 @@ uart:
   stop_bits: 1
   rx_buffer_size: 512
 ```
-
-No `kick_pin` is required with the final dual-transistor interface.
 
 See `examples/tosot-gwh18aad-live-test.yaml` for a complete test configuration.
 
