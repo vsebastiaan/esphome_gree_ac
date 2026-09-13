@@ -18,10 +18,11 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-# RX only. GPIO12/D6 intentionally avoids the D1 Mini USB-UART circuit on GPIO3.
+# RX-only hardware UART on GPIO3. No tx_pin is configured, so this sniffer cannot transmit.
+# On a D1 Mini, remove the RX-side 151 resistor that connects the USB-UART TX output to GPIO3.
 uart:
   id: sniff_uart
-  rx_pin: GPIO12
+  rx_pin: GPIO3
   baud_rate: 4800
   data_bits: 8
   parity: EVEN
