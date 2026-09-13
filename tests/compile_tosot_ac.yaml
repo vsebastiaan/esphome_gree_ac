@@ -49,8 +49,8 @@ climate:
     xfan_select:
       name: "TEST - X-Fan"
     save_select:
-      name: "TEST - Save / Eco"
+      name: "TEST - Save Eco"
     plasma_select:
-      name: "TEST - Health / Plasma"
+      name: "TEST - Health Plasma"
     beeper_select:
       name: "TEST - Beeper"
