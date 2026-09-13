@@ -23,23 +23,14 @@ static const char *const GWH18_VERTICAL_OPTIONS[] = {
     "Laagste",
 };
 
-static const char *const GWH18_DISPLAY_OPTIONS[] = {
+static const char *const GWH18_ON_OFF_OPTIONS[] = {
     "Uit",
     "Aan",
 };
 
 climate::ClimateTraits TosotGWH18AC::traits() {
   auto traits = TosotAC::traits();
-
-  // Homey labels the generic climate fan field simply as "Mode". On this GWH18
-  // that is confusing next to the real thermostat mode, so expose fan speed as
-  // a separate named select instead.
   traits.set_supported_fan_modes({});
-
-  // Hardware test on the GWH18 showed that the generic ESPHome swing modes are
-  // misleading for this unit: OFF does not stop the louver and the family-level
-  // Vertical/Both mapping includes unsupported horizontal-louver bits. The exact
-  // louver select below is therefore the single source of truth.
   traits.set_supported_swing_modes({});
   return traits;
 }
@@ -60,7 +51,6 @@ void TosotGWH18AC::loop() {
     uint8_t ui_code = 0xFF;
     if (this->actual_vertical_swing_code_ == 1 ||
         (this->actual_vertical_swing_code_ >= 7 && this->actual_vertical_swing_code_ <= 11)) {
-      // Codes 7..11 were tested on the physical GWH18 and behave like code 1.
       ui_code = 1;
     } else if (this->actual_vertical_swing_code_ >= 2 && this->actual_vertical_swing_code_ <= 6) {
       ui_code = this->actual_vertical_swing_code_;
@@ -72,15 +62,23 @@ void TosotGWH18AC::loop() {
     }
   }
 
-  if (this->gwh18_display_select_ != nullptr) {
-    // Hardware test: the useful states are simply display off or on. When on,
-    // this model shows the set temperature.
-    const int8_t display_index = this->actual_display_power_ ? 1 : 0;
-    if (display_index != this->gwh18_last_display_ui_index_) {
-      this->gwh18_last_display_ui_index_ = display_index;
-      this->gwh18_display_select_->publish_state(GWH18_DISPLAY_OPTIONS[display_index]);
-    }
-  }
+  auto publish_bool_select = [](select::Select *entity, bool state, int8_t &last_index) {
+    if (entity == nullptr)
+      return;
+    const int8_t index = state ? 1 : 0;
+    if (index == last_index)
+      return;
+    last_index = index;
+    entity->publish_state(GWH18_ON_OFF_OPTIONS[index]);
+  };
+
+  publish_bool_select(this->gwh18_display_select_, this->actual_display_power_, this->gwh18_last_display_ui_index_);
+  publish_bool_select(this->gwh18_turbo_select_, this->actual_turbo_, this->gwh18_last_turbo_ui_index_);
+  publish_bool_select(this->gwh18_plasma_select_, this->actual_plasma_, this->gwh18_last_plasma_ui_index_);
+  publish_bool_select(this->gwh18_beeper_select_, this->actual_beeper_, this->gwh18_last_beeper_ui_index_);
+  publish_bool_select(this->gwh18_sleep_select_, this->actual_sleep_, this->gwh18_last_sleep_ui_index_);
+  publish_bool_select(this->gwh18_xfan_select_, this->actual_xfan_, this->gwh18_last_xfan_ui_index_);
+  publish_bool_select(this->gwh18_save_select_, this->actual_save_, this->gwh18_last_save_ui_index_);
 }
 
 void TosotGWH18AC::set_fan_speed_select(select::Select *value) {
@@ -90,7 +88,6 @@ void TosotGWH18AC::set_fan_speed_select(select::Select *value) {
       return;
 
     uint8_t protocol_code = static_cast<uint8_t>(index);
-    // DRY only accepts low fan on this protocol family.
     if (this->desired_power_ && this->desired_mode_code_ == 2)
       protocol_code = 1;
 
@@ -98,7 +95,6 @@ void TosotGWH18AC::set_fan_speed_select(select::Select *value) {
       return;
 
     this->desired_fan_code_ = protocol_code;
-    // Manual fan selection exits Turbo, same behaviour as the generic control.
     this->desired_turbo_ = false;
     ESP_LOGI(TAG_GWH18, "Fan speed request ui=%u protocol=%u", static_cast<unsigned>(index),
              static_cast<unsigned>(protocol_code));
@@ -117,8 +113,6 @@ void TosotGWH18AC::set_vertical_swing_select(select::Select *value) {
       return;
 
     this->desired_vertical_swing_code_ = protocol_code;
-    // Preserve the horizontal bits exactly as reported by the unit. The GWH18
-    // has no separately useful horizontal-louver control in our hardware test.
     this->desired_horizontal_swing_code_ = this->actual_horizontal_swing_code_;
     ESP_LOGI(TAG_GWH18, "Vertical louver request ui=%u protocol=%u", static_cast<unsigned>(index),
              static_cast<unsigned>(protocol_code));
@@ -133,7 +127,7 @@ void TosotGWH18AC::set_display_select(select::Select *value) {
       return;
 
     const bool power = index == 1;
-    const uint8_t mode = 1;  // Set-temperature display mode in this protocol family.
+    const uint8_t mode = 1;
     if (power == this->desired_display_power_ && (!power || this->desired_display_mode_ == mode))
       return;
 
@@ -143,6 +137,92 @@ void TosotGWH18AC::set_display_select(select::Select *value) {
 
     ESP_LOGI(TAG_GWH18, "Display request=%s", power ? "on" : "off");
     this->queue_control_("gwh18-display");
+  });
+}
+
+void TosotGWH18AC::set_turbo_select(select::Select *value) {
+  this->gwh18_turbo_select_ = value;
+  value->add_on_state_callback([this](size_t index) {
+    if (index > 1)
+      return;
+    const bool state = index == 1;
+    if (state == this->desired_turbo_)
+      return;
+    this->desired_turbo_ = state;
+    if (state)
+      this->desired_fan_code_ = 3;
+    ESP_LOGI(TAG_GWH18, "Turbo request=%s", state ? "on" : "off");
+    this->queue_control_("gwh18-turbo");
+  });
+}
+
+void TosotGWH18AC::set_plasma_select(select::Select *value) {
+  this->gwh18_plasma_select_ = value;
+  value->add_on_state_callback([this](size_t index) {
+    if (index > 1)
+      return;
+    const bool state = index == 1;
+    if (state == this->desired_plasma_)
+      return;
+    this->desired_plasma_ = state;
+    ESP_LOGI(TAG_GWH18, "Health/Plasma request=%s", state ? "on" : "off");
+    this->queue_control_("gwh18-plasma");
+  });
+}
+
+void TosotGWH18AC::set_beeper_select(select::Select *value) {
+  this->gwh18_beeper_select_ = value;
+  value->add_on_state_callback([this](size_t index) {
+    if (index > 1)
+      return;
+    const bool state = index == 1;
+    if (state == this->desired_beeper_)
+      return;
+    this->desired_beeper_ = state;
+    ESP_LOGI(TAG_GWH18, "Beeper request=%s", state ? "on" : "off");
+    this->queue_control_("gwh18-beeper");
+  });
+}
+
+void TosotGWH18AC::set_sleep_select(select::Select *value) {
+  this->gwh18_sleep_select_ = value;
+  value->add_on_state_callback([this](size_t index) {
+    if (index > 1)
+      return;
+    const bool state = index == 1;
+    if (state == this->desired_sleep_)
+      return;
+    this->desired_sleep_ = state;
+    ESP_LOGI(TAG_GWH18, "Sleep request=%s", state ? "on" : "off");
+    this->queue_control_("gwh18-sleep");
+  });
+}
+
+void TosotGWH18AC::set_xfan_select(select::Select *value) {
+  this->gwh18_xfan_select_ = value;
+  value->add_on_state_callback([this](size_t index) {
+    if (index > 1)
+      return;
+    const bool state = index == 1;
+    if (state == this->desired_xfan_)
+      return;
+    this->desired_xfan_ = state;
+    ESP_LOGI(TAG_GWH18, "X-Fan request=%s", state ? "on" : "off");
+    this->queue_control_("gwh18-xfan");
+  });
+}
+
+void TosotGWH18AC::set_save_select(select::Select *value) {
+  this->gwh18_save_select_ = value;
+  value->add_on_state_callback([this](size_t index) {
+    if (index > 1)
+      return;
+    const bool state = index == 1;
+    if (state == this->desired_save_)
+      return;
+    this->desired_save_ = state;
+    ESP_LOGI(TAG_GWH18, "Save/Eco request=%s", state ? "on" : "off");
+    this->queue_control_("gwh18-save");
   });
 }
 
