@@ -6,7 +6,7 @@
 > - **Do not add an external pull-up on BLACK.** The AC side already pulls BLACK/AC-RX high (measured around **4.8V** on the test unit); the transistor therefore only sinks that line low. The external 10k pull-up belongs on the ESP8266 RX collector side, to 3.3V.
 > - The earlier resistor-divider + GPIO14/D5 kick experiments are not part of the final build.
 >
-> The GWH18 profile exposes Dutch Homey-oriented controls: `Ventilatorsnelheid` = Automatisch / Laag / Midden / Hoog / Turbo, `Verticale lamel`, `Display` and `Slaapstand`. Standard climate modes are localized by Homey as Automatisch / Koelen / Verwarmen / Ontvochtigen / Alleen ventileren / Uit. Less certain family-level mappings such as Save/Eco, X-Fan, Health/Plasma and Beeper remain explicit opt-in test controls.
+> The GWH18 profile exposes Dutch Homey-oriented controls: `Ventilatorsnelheid` = Automatisch / Laag / Midden / Hoog / Turbo, `Verticale lamel`, `Display` and `Slaapstand`. Standard climate modes are localized by Homey as Automatisch / Koelen / Verwarmen / Ontvochtigen / Alleen ventileren / Uit. Less certain family-level mappings such as Save/Eco, X-Fan, Health/Plasma and Beeper remain explicit opt-in test controls. No separate GWH18 Quiet/Stil fan mode has been proven or exposed.
 >
 > **Diagnostic fork (vsebastiaan):** adds a UART response-timeout retry so a single missed AC reply cannot leave `wait_response_` latched forever. This is intentionally a minimal diagnostic change on top of `gekkehenkie11/esphome_gree_ac`.
 
@@ -21,8 +21,7 @@ My fork currently differs from the original code in the following ways. What I d
 3) Fixed the rejection of commands
 4) Fixed reporting of current temp
 5) Fixed the Fahrenheit mode
-6) Implemented an optional silent mode (no beeping), only works for module sent commands (not for
-   remote control sent commands)
+6) Implemented optional command mute/no-beep behavior for compatible legacy modules. This is beeper suppression, **not** an AC Quiet/Stil fan mode.
    
 It's now compatible with GRJWB04-J / Cs532ae wifi modules
 
