@@ -62,6 +62,8 @@ BROWN / GND
 
 This stage also inverts the signal, therefore `GPIO1` is configured with `inverted: true`.
 
+**Important pull-up detail:** there is no added external pull-up resistor on BLACK in the final build. The AC itself already pulls BLACK / AC-RX high; this was measured at roughly **4.8 V** on the tested unit. The TX-side 2N3904 is therefore used as an open-collector pull-down: GPIO1 drives its base through **4.7k**, and the transistor pulls BLACK low when active. The added external pull-up in this design is the **10k from GPIO3/RX to 3.3 V** on the opposite, AC-TX -> D1-RX transistor stage.
+
 ## Why the second transistor matters
 
 The original prototype used a 4.7k/10k divider from ORANGE to GPIO3. The UART protocol was already correct: the AC answered normal `2F/01` polls. The failure was that the ESP8266 sometimes saw `rx_bytes=0` after a cold start even though the AC was transmitting.
@@ -208,11 +210,11 @@ climate:
     uart_id: ac_uart
 
     save_select:
-      name: "TEST - Save / Eco"
+      name: "TEST - Save Eco"
     # xfan_select:
     #   name: "TEST - X-Fan"
     # plasma_select:
-    #   name: "TEST - Health / Plasma"
+    #   name: "TEST - Health Plasma"
     # beeper_select:
     #   name: "TEST - Beeper"
 ```
