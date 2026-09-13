@@ -4,19 +4,11 @@
 #   GPIO1/TX -> 4.7k -> base 2N3904; emitter -> GND; collector -> BLACK (AC RX)
 #   ORANGE (AC TX) -> 4.7k -> RX node -> GPIO3/D1 RX
 #   RX node -> 10k -> GND
-#   GPIO14 / D5 -> 4.7k -> RX node   (short automatic startup/recovery kick)
+#   GPIO14 / D5 -> series resistor -> RX node (startup RX kick experiment)
 #   BROWN -> GND
 #
-# Important:
-# - AC TX is D1 RX (ORANGE -> GPIO3 through the divider).
-# - D1 TX is AC RX (GPIO1 -> NPN inverter -> BLACK).
-# - D5 must NOT be connected directly to the RX node; use the 4.7k series resistor.
-# - TX is inverted in software because the NPN transistor inverts it.
-# - D5 is normally high-impedance. The driver drives it HIGH for 100 ms at boot,
-#   then releases it. On the tested GWH18 the UART did not reliably start after a
-#   cold reset without this kick.
-#
-# EXP-prefixed entities are deliberately separated from proven normal controls.
+# The component auto-creates the normal GWH18 controls and EXP test switches,
+# so the climate block intentionally stays minimal.
 
 esphome:
   name: airco-huiskamer
@@ -57,7 +49,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/vsebastiaan/esphome_gree_ac
-      ref: 87a4152ef21b5fc74b8c5f754a9cd49c6ce093f0
+      ref: 4ada457f8dbda5109ddd2b8af3125803c242a6ce
     components: [tosot_ac]
     refresh: 0s
 
@@ -68,24 +60,13 @@ climate:
     uart_id: ac_uart
     kick_pin: GPIO14
 
-    # Normale GWH18-bediening.
-    fan_speed_select:
-      name: "Fan snelheid"
-    vertical_swing_select:
-      name: "Verticale lamel"
-    display_select:
-      name: "Display"
-
-    # Experimentele functies voor de laatste hardware-verificatieronde.
-    turbo_switch:
-      name: "EXP - Turbo"
-    sleep_switch:
-      name: "EXP - Sleep"
-    xfan_switch:
-      name: "EXP - X-Fan"
-    save_switch:
-      name: "EXP - Save / Eco"
-    plasma_switch:
-      name: "EXP - Health / Plasma"
-    beeper_switch:
-      name: "EXP - Beeper"
+# Auto-created entities:
+#   Fan snelheid          Auto / Laag / Midden / Hoog
+#   Verticale lamel       Swing / Hoogste / Hoog / Midden / Laag / Laagste
+#   Display               Uit / Aan
+#   EXP - Turbo
+#   EXP - Sleep
+#   EXP - X-Fan
+#   EXP - Save / Eco
+#   EXP - Health / Plasma
+#   EXP - Beeper
