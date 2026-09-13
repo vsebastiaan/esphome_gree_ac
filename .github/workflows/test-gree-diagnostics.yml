@@ -9,6 +9,7 @@ on:
       - 'components/gree_sniffer/**'
       - 'components/gree_replay/**'
       - 'components/sinclair_ac/**'
+      - 'components/tosot_ac/**'
       - 'tests/**'
       - '.github/workflows/test-gree-diagnostics.yml'
   workflow_dispatch:
@@ -45,3 +46,7 @@ jobs:
         run: esphome config tests/compile_sinclair_live.yaml
       - name: Compile D1 Mini live Sinclair firmware (no upload)
         run: esphome compile tests/compile_sinclair_live.yaml
+      - name: Validate D1 Mini exact-stock Tosot climate fixture
+        run: esphome config tests/compile_tosot_ac.yaml
+      - name: Compile D1 Mini exact-stock Tosot climate firmware (no upload)
+        run: esphome compile tests/compile_tosot_ac.yaml
