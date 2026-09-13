@@ -4,7 +4,10 @@ from esphome import pins
 from esphome.components import climate, select, uart
 from esphome.const import CONF_ID
 
-AUTO_LOAD = ["select"]
+# The GWH18 UI uses selects, but the shared/base driver still contains the
+# legacy switch-backed controls. Keep switch auto-loaded so those C++ headers
+# remain available and existing configurations stay compatible.
+AUTO_LOAD = ["select", "switch"]
 DEPENDENCIES = ["uart"]
 
 CONF_KICK_PIN = "kick_pin"
