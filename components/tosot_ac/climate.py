@@ -1,10 +1,10 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import pins
-from esphome.components import climate, select, switch, uart
+from esphome.components import climate, select, uart
 from esphome.const import CONF_ID
 
-AUTO_LOAD = ["select", "switch"]
+AUTO_LOAD = ["select"]
 DEPENDENCIES = ["uart"]
 
 CONF_KICK_PIN = "kick_pin"
@@ -48,7 +48,6 @@ tosot_ac_ns = cg.esphome_ns.namespace("tosot_ac")
 TosotGWH18AC = tosot_ac_ns.class_(
     "TosotGWH18AC", cg.Component, uart.UARTDevice, climate.Climate
 )
-TosotACSwitch = tosot_ac_ns.class_("TosotACSwitch", switch.Switch, cg.Component)
 TosotACSelect = tosot_ac_ns.class_("TosotACSelect", select.Select, cg.Component)
 
 select_schema = select.select_schema(select.Select).extend(
@@ -62,9 +61,7 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(): cv.declare_id(TosotGWH18AC),
             cv.Optional(CONF_KICK_PIN): pins.gpio_input_pin_schema,
 
-            # Use selects for every GWH18 sub-control. Homey exposes these on the
-            # climate device, while standalone ESPHome switch entities were not
-            # shown in the same Homey control screen.
+            # Controls that are verified/useful enough to expose by default.
             cv.Optional(
                 CONF_FAN_SPEED_SELECT, default={"name": "Fan snelheid"}
             ): select_schema,
@@ -75,23 +72,18 @@ CONFIG_SCHEMA = cv.All(
                 CONF_DISPLAY_SELECT, default={"name": "Display"}
             ): select_schema,
             cv.Optional(
-                CONF_TURBO_SELECT, default={"name": "EXP - Turbo"}
+                CONF_TURBO_SELECT, default={"name": "Turbo"}
             ): select_schema,
             cv.Optional(
-                CONF_SLEEP_SELECT, default={"name": "EXP - Sleep"}
+                CONF_SLEEP_SELECT, default={"name": "Sleep"}
             ): select_schema,
-            cv.Optional(
-                CONF_XFAN_SELECT, default={"name": "EXP - X-Fan"}
-            ): select_schema,
-            cv.Optional(
-                CONF_SAVE_SELECT, default={"name": "EXP - Save / Eco"}
-            ): select_schema,
-            cv.Optional(
-                CONF_PLASMA_SELECT, default={"name": "EXP - Health / Plasma"}
-            ): select_schema,
-            cv.Optional(
-                CONF_BEEPER_SELECT, default={"name": "EXP - Beeper"}
-            ): select_schema,
+
+            # Family-level mappings kept for controlled hardware testing only.
+            # They are NOT auto-created on a normal GWH18 installation.
+            cv.Optional(CONF_XFAN_SELECT): select_schema,
+            cv.Optional(CONF_SAVE_SELECT): select_schema,
+            cv.Optional(CONF_PLASMA_SELECT): select_schema,
+            cv.Optional(CONF_BEEPER_SELECT): select_schema,
         }
     ),
 )
@@ -119,6 +111,8 @@ async def to_code(config):
         CONF_BEEPER_SELECT: ON_OFF_OPTIONS,
     }
     for key, options in select_options.items():
+        if key not in config:
+            continue
         conf = config[key]
         entity = await select.new_select(conf, options=options)
         await cg.register_component(entity, conf)
