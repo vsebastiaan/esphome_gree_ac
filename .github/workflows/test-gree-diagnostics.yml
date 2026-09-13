@@ -1,11 +1,12 @@
-# dialect-probe-v3 compile gate
+# dialect-probe-v3 and passive-sniffer compile gate
 name: Test Gree diagnostics
 
 on:
   push:
-    branches: [main, fix/probe-diag-v2, feat/gree-dialect-probe-v3]
+    branches: [main, fix/probe-diag-v2, feat/gree-dialect-probe-v3, feat/gree-passive-sniffer]
     paths:
       - 'components/gree_uart/**'
+      - 'components/gree_sniffer/**'
       - 'tests/**'
       - '.github/workflows/test-gree-diagnostics.yml'
   workflow_dispatch:
@@ -26,7 +27,11 @@ jobs:
         run: python tests/test_probe_diagnostics.py
       - name: Install matching ESPHome version
         run: python -m pip install esphome==2026.7.4
-      - name: Validate D1 Mini fixture
+      - name: Validate D1 Mini dialect fixture
         run: esphome config tests/compile_gree_uart.yaml
-      - name: Compile real ESP8266 firmware (no upload)
+      - name: Compile D1 Mini dialect firmware (no upload)
         run: esphome compile tests/compile_gree_uart.yaml
+      - name: Validate D1 Mini passive sniffer fixture
+        run: esphome config tests/compile_gree_sniffer.yaml
+      - name: Compile D1 Mini passive sniffer firmware (no upload)
+        run: esphome compile tests/compile_gree_sniffer.yaml
