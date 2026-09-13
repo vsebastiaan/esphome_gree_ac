@@ -2,7 +2,7 @@ name: Test Gree diagnostics
 
 on:
   push:
-    branches: [main, fix/probe-diag-v2]
+    branches: [main, fix/probe-diag-v2, feat/gree-dialect-probe-v3]
     paths:
       - 'components/gree_uart/**'
       - 'tests/**'
