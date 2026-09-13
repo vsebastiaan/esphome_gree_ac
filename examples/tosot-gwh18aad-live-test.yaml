@@ -1,11 +1,24 @@
 # Live-control test for Tosot GWH18AAD-K6DNA1B/I on a Wemos D1 mini.
 #
-# Confirmed wiring for this unit:
-#   GPIO1/TX -> 4.7k -> base 2N3904; emitter -> GND; collector -> BLACK (AC RX)
-#   ORANGE (AC TX) -> 4.7k -> RX node -> GPIO3/D1 RX
-#   RX node -> 10k -> GND
-#   GPIO14 / D5 -> series resistor -> RX node (startup RX kick experiment)
-#   BROWN -> GND
+# FINAL HARDWARE VERIFIED ON THE TEST UNIT
+#
+# AC -> D1 RX:
+#   ORANGE (AC TX) -> 22k -> base 2N3904
+#   2N3904 emitter -> BROWN/GND
+#   2N3904 collector -> GPIO3 / D1 RX
+#   GPIO3 / collector -> 10k -> 3.3V
+#
+# D1 TX -> AC:
+#   GPIO1 / D1 TX -> 4.7k -> base 2N3904
+#   2N3904 emitter -> BROWN/GND
+#   2N3904 collector -> BLACK (AC RX)
+#
+# Both directions are inverted by the NPN stages, so both UART pins are
+# configured inverted in software.
+#
+# The earlier 4.7k/10k RX divider + D5 startup-kick experiment is NOT needed
+# with this transistor RX interface. The transistor interface fixed cold-start
+# RX immediately on the tested GWH18.
 #
 # The component auto-creates the normal GWH18 controls and EXP test switches,
 # so the climate block intentionally stays minimal.
@@ -38,7 +51,9 @@ uart:
   tx_pin:
     number: GPIO1
     inverted: true
-  rx_pin: GPIO3
+  rx_pin:
+    number: GPIO3
+    inverted: true
   baud_rate: 4800
   data_bits: 8
   parity: EVEN
@@ -49,7 +64,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/vsebastiaan/esphome_gree_ac
-      ref: 4ada457f8dbda5109ddd2b8af3125803c242a6ce
+      ref: feature/tosot-v5-full-mapping
     components: [tosot_ac]
     refresh: 0s
 
@@ -58,7 +73,6 @@ climate:
     id: tosot_huiskamer
     name: "Airco huiskamer"
     uart_id: ac_uart
-    kick_pin: GPIO14
 
 # Auto-created entities:
 #   Fan snelheid          Auto / Laag / Midden / Hoog
