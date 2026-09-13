@@ -57,6 +57,13 @@ void GreeClimate::dump_config() {
 }
 
 void GreeClimate::loop() {
+  if (this->dialect_probe_active_) {
+    // Research mode owns RX so even partial/non-7E bytes are retained.
+    this->capture_dialect_probe_rx_();
+    this->run_dialect_probe_();
+    return;
+  }
+
   this->run_startup_probe_();
   this->report_startup_probe_();
 
@@ -161,6 +168,7 @@ void GreeClimate::report_startup_probe_() {
 }
 
 void GreeClimate::update() {
+  if (this->dialect_probe_active_) return;
   if (!this->startup_probe_done_) return;
   data_write_[CRC_WRITE] = get_checksum_(data_write_, sizeof(data_write_));
   send_data_(data_write_, sizeof(data_write_));
@@ -306,6 +314,10 @@ void GreeClimate::read_state_(const uint8_t *data, uint8_t size) {
 }
 
 void GreeClimate::control(const climate::ClimateCall &call) {
+  if (this->dialect_probe_active_) {
+    ESP_LOGW(TAG, "Ignoring control request while dialect probe is active");
+    return;
+  }
   if (!this->startup_probe_done_) {
     ESP_LOGW(TAG, "Ignoring control request while startup probe is active");
     return;
