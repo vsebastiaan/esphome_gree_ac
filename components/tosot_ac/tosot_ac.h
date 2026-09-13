@@ -20,6 +20,7 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
  protected:
   static constexpr uint32_t POLL_INTERVAL_MS = 300;
   static constexpr uint32_t SUMMARY_INTERVAL_MS = 5000;
+  static constexpr uint32_t STATE_HEARTBEAT_MS = 30000;
   static constexpr uint8_t RX_BUFFER_SIZE = 64;
 
   // RX path intentionally mirrors the known-good gree_replay implementation.
@@ -44,14 +45,18 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
 
   uint32_t last_tx_ms_{0};
   uint32_t next_summary_ms_{0};
+  uint32_t last_publish_ms_{0};
   uint32_t tx_count_{0};
   uint32_t rx_byte_count_{0};
   uint32_t rx_frame_count_{0};
   uint32_t rx_report_31_count_{0};
   uint32_t bad_checksum_count_{0};
   uint32_t rx_resync_count_{0};
+  uint32_t publish_count_{0};
 
   bool ready_{false};
+  bool state_published_{false};
+  bool force_publish_{false};
   uint8_t last_mode_code_{1};
   uint8_t last_fan_code_{0};
   uint8_t desired_mode_code_{1};
