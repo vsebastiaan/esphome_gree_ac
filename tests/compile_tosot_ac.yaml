@@ -1,6 +1,6 @@
 # Compile-only fixture. Never flash this dummy network configuration.
-# Deliberately uses the minimal climate block: GWH18 selects and EXP switches
-# must be auto-created by the component defaults.
+# Normal GWH18 controls are auto-created. The uncertain family-level controls
+# are explicitly enabled here only so CI still compiles those optional paths.
 esphome:
   name: tosot-ac-smoke
 
@@ -46,3 +46,11 @@ climate:
     id: tosot_test
     name: "Tosot Test"
     uart_id: ac_uart
+    xfan_select:
+      name: "TEST - X-Fan"
+    save_select:
+      name: "TEST - Save / Eco"
+    plasma_select:
+      name: "TEST - Health / Plasma"
+    beeper_select:
+      name: "TEST - Beeper"
