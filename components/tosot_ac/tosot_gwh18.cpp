@@ -8,10 +8,11 @@ namespace tosot_ac {
 static const char *const TAG_GWH18 = "tosot_ac.gwh18";
 
 static const char *const GWH18_FAN_OPTIONS[] = {
-    "Auto",
+    "Automatisch",
     "Laag",
     "Midden",
     "Hoog",
+    "Turbo",
 };
 
 static const char *const GWH18_VERTICAL_OPTIONS[] = {
@@ -41,10 +42,12 @@ void TosotGWH18AC::loop() {
   if (!this->ready_)
     return;
 
-  if (this->gwh18_fan_speed_select_ != nullptr && this->last_fan_code_ <= 3 &&
-      this->last_fan_code_ != this->gwh18_last_fan_ui_code_) {
-    this->gwh18_last_fan_ui_code_ = this->last_fan_code_;
-    this->gwh18_fan_speed_select_->publish_state(GWH18_FAN_OPTIONS[this->last_fan_code_]);
+  if (this->gwh18_fan_speed_select_ != nullptr && this->last_fan_code_ <= 3) {
+    const uint8_t ui_code = this->actual_turbo_ ? 4 : this->last_fan_code_;
+    if (ui_code != this->gwh18_last_fan_ui_code_) {
+      this->gwh18_last_fan_ui_code_ = ui_code;
+      this->gwh18_fan_speed_select_->publish_state(GWH18_FAN_OPTIONS[ui_code]);
+    }
   }
 
   if (this->gwh18_vertical_swing_select_ != nullptr) {
@@ -73,7 +76,6 @@ void TosotGWH18AC::loop() {
   };
 
   publish_bool_select(this->gwh18_display_select_, this->actual_display_power_, this->gwh18_last_display_ui_index_);
-  publish_bool_select(this->gwh18_turbo_select_, this->actual_turbo_, this->gwh18_last_turbo_ui_index_);
   publish_bool_select(this->gwh18_plasma_select_, this->actual_plasma_, this->gwh18_last_plasma_ui_index_);
   publish_bool_select(this->gwh18_beeper_select_, this->actual_beeper_, this->gwh18_last_beeper_ui_index_);
   publish_bool_select(this->gwh18_sleep_select_, this->actual_sleep_, this->gwh18_last_sleep_ui_index_);
@@ -84,8 +86,18 @@ void TosotGWH18AC::loop() {
 void TosotGWH18AC::set_fan_speed_select(select::Select *value) {
   this->gwh18_fan_speed_select_ = value;
   value->add_on_state_callback([this](size_t index) {
-    if (index > 3)
+    if (index > 4)
       return;
+
+    if (index == 4) {
+      if (this->desired_turbo_)
+        return;
+      this->desired_fan_code_ = 3;
+      this->desired_turbo_ = true;
+      ESP_LOGI(TAG_GWH18, "Fan speed request ui=Turbo protocol_fan=3 turbo=on");
+      this->queue_control_("gwh18-fan-turbo");
+      return;
+    }
 
     uint8_t protocol_code = static_cast<uint8_t>(index);
     if (this->desired_power_ && this->desired_mode_code_ == 2)
@@ -96,7 +108,7 @@ void TosotGWH18AC::set_fan_speed_select(select::Select *value) {
 
     this->desired_fan_code_ = protocol_code;
     this->desired_turbo_ = false;
-    ESP_LOGI(TAG_GWH18, "Fan speed request ui=%u protocol=%u", static_cast<unsigned>(index),
+    ESP_LOGI(TAG_GWH18, "Fan speed request ui=%u protocol=%u turbo=off", static_cast<unsigned>(index),
              static_cast<unsigned>(protocol_code));
     this->queue_control_("gwh18-fan-speed");
   });
@@ -137,22 +149,6 @@ void TosotGWH18AC::set_display_select(select::Select *value) {
 
     ESP_LOGI(TAG_GWH18, "Display request=%s", power ? "on" : "off");
     this->queue_control_("gwh18-display");
-  });
-}
-
-void TosotGWH18AC::set_turbo_select(select::Select *value) {
-  this->gwh18_turbo_select_ = value;
-  value->add_on_state_callback([this](size_t index) {
-    if (index > 1)
-      return;
-    const bool state = index == 1;
-    if (state == this->desired_turbo_)
-      return;
-    this->desired_turbo_ = state;
-    if (state)
-      this->desired_fan_code_ = 3;
-    ESP_LOGI(TAG_GWH18, "Turbo request=%s", state ? "on" : "off");
-    this->queue_control_("gwh18-turbo");
   });
 }
 
