@@ -20,9 +20,10 @@ wifi:
   ssid: "compile-test-not-a-real-network"
   password: "compile-test-password"
 
+# RX-only hardware UART: GPIO3 with no TX pin configured.
 uart:
   id: sniff_uart
-  rx_pin: GPIO12
+  rx_pin: GPIO3
   baud_rate: 4800
   data_bits: 8
   parity: EVEN
