@@ -1,0 +1,41 @@
+# Compile-only fixture. Never flash this dummy network configuration.
+esphome:
+  name: gree-sniffer-smoke
+
+esp8266:
+  board: d1_mini
+
+logger:
+  baud_rate: 0
+  level: INFO
+
+api:
+  encryption:
+    key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: "compile-test-not-a-real-network"
+  password: "compile-test-password"
+
+uart:
+  id: sniff_uart
+  rx_pin: GPIO12
+  baud_rate: 4800
+  data_bits: 8
+  parity: EVEN
+  stop_bits: 1
+  rx_buffer_size: 512
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [gree_sniffer]
+
+gree_sniffer:
+  id: passive_sniffer
+  uart_id: sniff_uart
+  channel: "CI-test"
