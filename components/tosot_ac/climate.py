@@ -1,6 +1,5 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome import pins
 from esphome.components import climate, select, uart
 from esphome.const import CONF_ID
 
@@ -9,8 +8,6 @@ from esphome.const import CONF_ID
 # remain available and existing configurations stay compatible.
 AUTO_LOAD = ["select", "switch"]
 DEPENDENCIES = ["uart"]
-
-CONF_KICK_PIN = "kick_pin"
 
 CONF_FAN_SPEED_SELECT = "fan_speed_select"
 CONF_VERTICAL_SWING_SELECT = "vertical_swing_select"
@@ -64,7 +61,6 @@ CONFIG_SCHEMA = cv.All(
     SCHEMA.extend(
         {
             cv.GenerateID(): cv.declare_id(TosotGWH18AC),
-            cv.Optional(CONF_KICK_PIN): pins.gpio_input_pin_schema,
 
             # Controls that are verified/useful enough to expose by default.
             cv.Optional(
@@ -96,10 +92,6 @@ async def to_code(config):
     await climate.register_climate(var, config)
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
-
-    if CONF_KICK_PIN in config:
-        pin = await cg.gpio_pin_expression(config[CONF_KICK_PIN])
-        cg.add(var.set_kick_pin(pin))
 
     select_options = {
         CONF_FAN_SPEED_SELECT: FAN_SPEED_OPTIONS,

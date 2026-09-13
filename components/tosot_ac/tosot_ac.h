@@ -9,7 +9,6 @@
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/component.h"
-#include "esphome/core/gpio.h"
 
 namespace esphome {
 namespace tosot_ac {
@@ -31,8 +30,6 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   void control(const climate::ClimateCall &call) override;
   climate::ClimateTraits traits() override;
 
-  void set_kick_pin(InternalGPIOPin *pin) { this->kick_pin_ = pin; }
-
   void set_horizontal_swing_select(select::Select *value);
   void set_vertical_swing_select(select::Select *value);
   void set_display_select(select::Select *value);
@@ -49,9 +46,6 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   static constexpr uint32_t POLL_INTERVAL_MS = 300;
   static constexpr uint32_t SUMMARY_INTERVAL_MS = 5000;
   static constexpr uint32_t STATE_HEARTBEAT_MS = 30000;
-  static constexpr uint32_t KICK_PULSE_MS = 100;
-  static constexpr uint32_t STARTUP_KICK_RETRY_MS = 2000;
-  static constexpr uint32_t RECOVERY_KICK_TIMEOUT_MS = 5000;
   static constexpr uint8_t RX_BUFFER_SIZE = 64;
 
   void consume_rx_byte_(uint8_t value);
@@ -60,10 +54,6 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   uint8_t checksum_array_(const uint8_t *data, uint8_t size) const;
   void report_summary_();
   void log_report_delta_(const std::vector<uint8_t> &frame) const;
-
-  void start_kick_(const char *reason);
-  void finish_kick_();
-  void flush_uart_();
 
   void queue_control_(const char *reason);
   void send_next_();
@@ -75,7 +65,6 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   void publish_advanced_state_(bool force);
   void log_frame_(const char *prefix, const std::vector<uint8_t> &frame) const;
 
-  InternalGPIOPin *kick_pin_{nullptr};
   uint8_t rx_buffer_[RX_BUFFER_SIZE]{};
   uint8_t rx_pos_{0};
   uint8_t rx_expected_{0};
@@ -96,9 +85,6 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   uint32_t last_tx_ms_{0};
   uint32_t next_summary_ms_{0};
   uint32_t last_publish_ms_{0};
-  uint32_t last_valid_report_ms_{0};
-  uint32_t last_kick_ms_{0};
-  uint32_t kick_release_ms_{0};
   uint32_t tx_count_{0};
   uint32_t rx_byte_count_{0};
   uint32_t rx_frame_count_{0};
@@ -107,13 +93,11 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   uint32_t bad_checksum_count_{0};
   uint32_t rx_resync_count_{0};
   uint32_t publish_count_{0};
-  uint32_t kick_count_{0};
 
   bool ready_{false};
   bool state_published_{false};
   bool advanced_state_initialized_{false};
   bool force_publish_{false};
-  bool kick_active_{false};
 
   uint8_t last_mode_code_{1};
   uint8_t last_fan_code_{0};
