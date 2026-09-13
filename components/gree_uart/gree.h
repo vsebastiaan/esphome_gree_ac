@@ -80,8 +80,8 @@ class GreeClimate : public climate::Climate, public uart::UARTDevice, public Pol
   void dump_config() override;
   void control(const climate::ClimateCall &call) override;
   void set_supported_presets(climate::ClimatePresetMask presets) { this->supported_presets_ = presets; }
-  // Report retained results without restarting the probe or transmitting UART.
   void log_probe_result();
+  void log_dialect_probe_result();
 
  protected:
   climate::ClimateTraits traits() override;
@@ -93,6 +93,11 @@ class GreeClimate : public climate::Climate, public uart::UARTDevice, public Pol
  private:
   void run_startup_probe_();
   void report_startup_probe_();
+  void run_dialect_probe_();
+  void capture_dialect_probe_rx_();
+  void send_dialect_probe_step_(uint8_t step);
+  const char *dialect_probe_label_(uint8_t step) const;
+  void finish_dialect_probe_(bool found_rx);
 
   uint8_t data_write_[47] = {0x7E, 0x7E, 0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   uint8_t data_read_[GREE_RX_BUFFER_SIZE] = {0};
@@ -108,6 +113,25 @@ class GreeClimate : public climate::Climate, public uart::UARTDevice, public Pol
   uint8_t startup_capture_size_[8]{};
   uint8_t startup_capture_[8][GREE_RX_BUFFER_SIZE]{};
   uint8_t startup_report_frame_index_{0};
+
+  static constexpr uint8_t DIALECT_PROBE_TOTAL_STEPS = 12;
+  static constexpr uint16_t DIALECT_PROBE_RX_MAX = 512;
+  bool dialect_probe_active_{true};
+  bool dialect_probe_done_{false};
+  bool dialect_probe_found_rx_{false};
+  bool dialect_probe_waiting_{false};
+  uint8_t dialect_probe_step_{0};
+  uint8_t dialect_probe_last_sent_step_{0xFF};
+  uint8_t dialect_probe_sent_{0};
+  uint8_t dialect_probe_first_hit_step_{0xFF};
+  uint8_t dialect_probe_report_step_cursor_{0};
+  uint32_t dialect_probe_next_ms_{0};
+  uint32_t dialect_probe_deadline_ms_{0};
+  uint16_t dialect_probe_rx_total_{0};
+  uint16_t dialect_probe_rx_stored_{0};
+  uint8_t dialect_probe_rx_[DIALECT_PROBE_RX_MAX]{};
+  uint16_t dialect_probe_step_rx_[DIALECT_PROBE_TOTAL_STEPS]{};
+  uint16_t dialect_probe_step_offset_[DIALECT_PROBE_TOTAL_STEPS]{};
 
   climate::ClimatePresetMask supported_presets_{};
 };
