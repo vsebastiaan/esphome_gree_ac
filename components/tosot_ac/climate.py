@@ -16,7 +16,9 @@ CONFIG_SCHEMA = cv.All(
     SCHEMA.extend(
         {
             cv.GenerateID(): cv.declare_id(TosotAC),
-            cv.Optional(CONF_KICK_PIN): pins.gpio_output_pin_schema,
+            # High-impedance in normal operation. The C++ driver switches this
+            # pin to OUTPUT/HIGH only for a short RX-start kick.
+            cv.Optional(CONF_KICK_PIN): pins.gpio_input_pin_schema,
         }
     ),
 )
