@@ -9,10 +9,8 @@ DEPENDENCIES = ["uart"]
 
 CONF_KICK_PIN = "kick_pin"
 
-CONF_HORIZONTAL_SWING_SELECT = "horizontal_swing_select"
 CONF_VERTICAL_SWING_SELECT = "vertical_swing_select"
 CONF_DISPLAY_SELECT = "display_select"
-CONF_DISPLAY_UNIT_SELECT = "display_unit_select"
 
 CONF_TURBO_SWITCH = "turbo_switch"
 CONF_PLASMA_SWITCH = "plasma_switch"
@@ -21,43 +19,25 @@ CONF_SLEEP_SWITCH = "sleep_switch"
 CONF_XFAN_SWITCH = "xfan_switch"
 CONF_SAVE_SWITCH = "save_switch"
 
-HORIZONTAL_SWING_OPTIONS = [
-    "0 - OFF",
-    "1 - Swing - Full",
-    "2 - Constant - Left",
-    "3 - Constant - Mid-Left",
-    "4 - Constant - Middle",
-    "5 - Constant - Mid-Right",
-    "6 - Constant - Right",
-]
-
+# Exact behaviour measured on the Tosot GWH18 hardware.
 VERTICAL_SWING_OPTIONS = [
-    "00 - OFF",
-    "01 - Swing - Full",
-    "02 - Swing - Down",
-    "03 - Swing - Mid-Down",
-    "04 - Swing - Middle",
-    "05 - Swing - Mid-Up",
-    "06 - Swing - Up",
-    "07 - Constant - Down",
-    "08 - Constant - Mid-Down",
-    "09 - Constant - Middle",
-    "10 - Constant - Mid-Up",
-    "11 - Constant - Up",
+    "1 - Volledige swing",
+    "2 - Hoogste vaste stand",
+    "3 - Hoge vaste stand",
+    "4 - Middenstand",
+    "5 - Lage vaste stand",
+    "6 - Laagste vaste stand",
 ]
 
 DISPLAY_OPTIONS = [
-    "0 - OFF",
-    "1 - Auto",
-    "2 - Set temperature",
-    "3 - Actual temperature",
-    "4 - Outside temperature",
+    "0 - Uit",
+    "1 - Settemperatuur",
 ]
 
-DISPLAY_UNIT_OPTIONS = ["C", "F"]
-
 tosot_ac_ns = cg.esphome_ns.namespace("tosot_ac")
-TosotAC = tosot_ac_ns.class_("TosotAC", cg.Component, uart.UARTDevice, climate.Climate)
+TosotGWH18AC = tosot_ac_ns.class_(
+    "TosotGWH18AC", cg.Component, uart.UARTDevice, climate.Climate
+)
 TosotACSwitch = tosot_ac_ns.class_("TosotACSwitch", switch.Switch, cg.Component)
 TosotACSelect = tosot_ac_ns.class_("TosotACSelect", select.Select, cg.Component)
 
@@ -72,14 +52,12 @@ SCHEMA = climate.climate_schema(climate.Climate).extend(uart.UART_DEVICE_SCHEMA)
 CONFIG_SCHEMA = cv.All(
     SCHEMA.extend(
         {
-            cv.GenerateID(): cv.declare_id(TosotAC),
+            cv.GenerateID(): cv.declare_id(TosotGWH18AC),
             # High-impedance in normal operation. The C++ driver switches this
             # pin to OUTPUT/HIGH only for a short RX-start kick.
             cv.Optional(CONF_KICK_PIN): pins.gpio_input_pin_schema,
-            cv.Optional(CONF_HORIZONTAL_SWING_SELECT): select_schema,
             cv.Optional(CONF_VERTICAL_SWING_SELECT): select_schema,
             cv.Optional(CONF_DISPLAY_SELECT): select_schema,
-            cv.Optional(CONF_DISPLAY_UNIT_SELECT): select_schema,
             cv.Optional(CONF_TURBO_SWITCH): switch_schema,
             cv.Optional(CONF_PLASMA_SWITCH): switch_schema,
             cv.Optional(CONF_BEEPER_SWITCH): switch_schema,
@@ -102,10 +80,8 @@ async def to_code(config):
         cg.add(var.set_kick_pin(pin))
 
     select_options = {
-        CONF_HORIZONTAL_SWING_SELECT: HORIZONTAL_SWING_OPTIONS,
         CONF_VERTICAL_SWING_SELECT: VERTICAL_SWING_OPTIONS,
         CONF_DISPLAY_SELECT: DISPLAY_OPTIONS,
-        CONF_DISPLAY_UNIT_SELECT: DISPLAY_UNIT_OPTIONS,
     }
     for key, options in select_options.items():
         if key in config:
