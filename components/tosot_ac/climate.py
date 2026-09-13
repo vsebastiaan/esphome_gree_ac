@@ -13,7 +13,6 @@ CONF_FAN_SPEED_SELECT = "fan_speed_select"
 CONF_VERTICAL_SWING_SELECT = "vertical_swing_select"
 CONF_DISPLAY_SELECT = "display_select"
 
-CONF_TURBO_SELECT = "turbo_select"
 CONF_PLASMA_SELECT = "plasma_select"
 CONF_BEEPER_SELECT = "beeper_select"
 CONF_SLEEP_SELECT = "sleep_select"
@@ -21,11 +20,14 @@ CONF_XFAN_SELECT = "xfan_select"
 CONF_SAVE_SELECT = "save_select"
 
 # Exact behaviour measured on the Tosot GWH18 hardware.
+# Turbo is a separate protocol bit, but is intentionally presented as the
+# highest fan-speed choice in the user interface.
 FAN_SPEED_OPTIONS = [
-    "Auto",
+    "Automatisch",
     "Laag",
     "Midden",
     "Hoog",
+    "Turbo",
 ]
 
 VERTICAL_SWING_OPTIONS = [
@@ -63,7 +65,7 @@ CONFIG_SCHEMA = cv.All(
 
             # Controls that are verified/useful enough to expose by default.
             cv.Optional(
-                CONF_FAN_SPEED_SELECT, default={"name": "Fan snelheid"}
+                CONF_FAN_SPEED_SELECT, default={"name": "Ventilatorsnelheid"}
             ): select_schema,
             cv.Optional(
                 CONF_VERTICAL_SWING_SELECT, default={"name": "Verticale lamel"}
@@ -72,10 +74,7 @@ CONFIG_SCHEMA = cv.All(
                 CONF_DISPLAY_SELECT, default={"name": "Display"}
             ): select_schema,
             cv.Optional(
-                CONF_TURBO_SELECT, default={"name": "Turbo"}
-            ): select_schema,
-            cv.Optional(
-                CONF_SLEEP_SELECT, default={"name": "Sleep"}
+                CONF_SLEEP_SELECT, default={"name": "Slaapstand"}
             ): select_schema,
 
             # Family-level mappings kept for controlled hardware testing only.
@@ -103,7 +102,6 @@ async def to_code(config):
         CONF_FAN_SPEED_SELECT: FAN_SPEED_OPTIONS,
         CONF_VERTICAL_SWING_SELECT: VERTICAL_SWING_OPTIONS,
         CONF_DISPLAY_SELECT: DISPLAY_OPTIONS,
-        CONF_TURBO_SELECT: ON_OFF_OPTIONS,
         CONF_SLEEP_SELECT: ON_OFF_OPTIONS,
         CONF_XFAN_SELECT: ON_OFF_OPTIONS,
         CONF_SAVE_SELECT: ON_OFF_OPTIONS,
