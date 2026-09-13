@@ -1,4 +1,10 @@
-> **Tosot GWH18 / Wemos D1 mini:** this fork now also contains a hardware-tested UART replacement path for the Tosot GWH18AAD-K6DNA1B/I. It uses 4800 8E1 and NPN transistor interfaces in both UART directions, with both ESP8266 UART pins configured inverted. See [`docs/tosot-gwh18aad.md`](docs/tosot-gwh18aad.md) and [`examples/tosot-gwh18aad-live-test.yaml`](examples/tosot-gwh18aad-live-test.yaml).
+> **Tosot GWH18 / Wemos D1 mini:** this fork contains a hardware-tested UART replacement path for the Tosot GWH18AAD-K6DNA1B/I. It uses 4800 8E1 and a 2N3904 transistor interface in both UART directions, with both ESP8266 UART pins configured inverted. See [`docs/tosot-gwh18aad.md`](docs/tosot-gwh18aad.md) and [`examples/tosot-gwh18aad-live-test.yaml`](examples/tosot-gwh18aad-live-test.yaml).
+>
+> **Final verified wiring on the tested GWH18:**
+> - AC **ORANGE (AC TX)** -> **22k** -> base **2N3904**; emitter -> **BROWN/GND**; collector -> **GPIO3/RX**; **10k pull-up from GPIO3/collector to 3.3V**.
+> - D1 **GPIO1/TX** -> **4.7k** -> base **2N3904**; emitter -> **BROWN/GND**; collector -> **BLACK (AC RX)**.
+> - **Do not add an external pull-up on BLACK.** The AC side already pulls BLACK/AC-RX high (measured around **4.8V** on the test unit); the transistor therefore only sinks that line low. The external 10k pull-up belongs on the ESP8266 RX collector side, to 3.3V.
+> - The earlier resistor-divider + GPIO14/D5 kick experiments are not part of the final build.
 >
 > The GWH18 profile exposes Dutch Homey-oriented controls: `Ventilatorsnelheid` = Automatisch / Laag / Midden / Hoog / Turbo, `Verticale lamel`, `Display` and `Slaapstand`. Standard climate modes are localized by Homey as Automatisch / Koelen / Verwarmen / Ontvochtigen / Alleen ventileren / Uit. Less certain family-level mappings such as Save/Eco, X-Fan, Health/Plasma and Beeper remain explicit opt-in test controls.
 >
