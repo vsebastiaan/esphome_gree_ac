@@ -43,3 +43,4 @@ climate:
     id: tosot_test
     name: "Tosot Test"
     uart_id: ac_uart
+    kick_pin: GPIO14
