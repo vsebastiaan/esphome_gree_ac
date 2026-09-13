@@ -9,7 +9,7 @@ namespace esphome {
 namespace tosot_ac {
 
 static const char *const TAG = "tosot_ac";
-static const char *const VERSION = "tosot-gwh18-v3";
+static const char *const VERSION = "tosot-gwh18-v4";
 
 // Exact passive 2F/01 request captured from the original CS532AE on BLACK.
 static const uint8_t STOCK_POLL[50] = {
@@ -25,8 +25,16 @@ void TosotAC::setup() {
   this->next_summary_ms_ = now + SUMMARY_INTERVAL_MS;
   this->mode = climate::CLIMATE_MODE_OFF;
   this->target_temperature = 22.0f;
+
   ESP_LOGI(TAG, "[%s] Starting exact-stock Tosot climate driver", VERSION);
   ESP_LOGI(TAG, "[%s] RX parser is the proven gree_replay parser; state publishing is change-driven", VERSION);
+
+  if (this->kick_pin_ != nullptr) {
+    this->kick_pin_->setup();
+    this->kick_pin_->pin_mode(gpio::FLAG_INPUT);
+    ESP_LOGI(TAG, "[%s] RX kick enabled: 100 ms HIGH pulse, then high-Z", VERSION);
+    this->start_kick_("boot");
+  }
 }
 
 climate::ClimateTraits TosotAC::traits() {
@@ -41,6 +49,22 @@ climate::ClimateTraits TosotAC::traits() {
 }
 
 void TosotAC::loop() {
+  uint32_t now = millis();
+
+  // During the short kick pulse we intentionally do not poll the AC. Any UART
+  // bytes that happen to arrive are discarded so the normal parser starts clean.
+  if (this->kick_active_) {
+    this->flush_uart_();
+    if (static_cast<int32_t>(now - this->kick_release_ms_) >= 0)
+      this->finish_kick_();
+
+    if (static_cast<int32_t>(now - this->next_summary_ms_) >= 0) {
+      this->report_summary_();
+      this->next_summary_ms_ = now + SUMMARY_INTERVAL_MS;
+    }
+    return;
+  }
+
   // Keep this receive loop byte-for-byte equivalent in behaviour to gree_replay.
   while (this->available() > 0) {
     uint8_t value = 0;
@@ -50,7 +74,26 @@ void TosotAC::loop() {
     this->consume_rx_byte_(value);
   }
 
-  const uint32_t now = millis();
+  now = millis();
+
+  // If the initial kick did not produce a valid report, repeat it after 2 s.
+  // Once communication has been established, never kick a healthy line. Only
+  // recover after 5 s without a single valid 2F/31 report, and then at most once
+  // per 5 s until communication returns.
+  if (this->kick_pin_ != nullptr) {
+    if (!this->ready_ && this->last_kick_ms_ != 0 && now - this->last_kick_ms_ >= STARTUP_KICK_RETRY_MS) {
+      this->start_kick_("startup-retry");
+      return;
+    }
+
+    if (this->ready_ && this->last_valid_report_ms_ != 0 &&
+        now - this->last_valid_report_ms_ >= RECOVERY_KICK_TIMEOUT_MS &&
+        now - this->last_kick_ms_ >= RECOVERY_KICK_TIMEOUT_MS) {
+      this->start_kick_("rx-timeout-recovery");
+      return;
+    }
+  }
+
   if (now - this->last_tx_ms_ >= POLL_INTERVAL_MS) {
     this->send_next_();
     this->last_tx_ms_ = now;
@@ -155,6 +198,7 @@ void TosotAC::finish_rx_frame_() {
 
   if (report31) {
     this->rx_report_31_count_++;
+    this->last_valid_report_ms_ = millis();
     this->last_report_.assign(this->rx_buffer_, this->rx_buffer_ + size);
     this->decode_report_(this->last_report_);
   }
@@ -180,6 +224,53 @@ uint8_t TosotAC::checksum_array_(const uint8_t *data, uint8_t size) const {
   for (uint8_t i = 2; i + 1 < size; i++)
     sum += data[i];
   return sum;
+}
+
+void TosotAC::start_kick_(const char *reason) {
+  if (this->kick_pin_ == nullptr || this->kick_active_)
+    return;
+
+  const uint32_t now = millis();
+  this->flush_uart_();
+  this->reset_rx_parser_();
+
+  // Preload HIGH before changing direction so there is no intentional LOW pulse.
+  // A 4.7k series resistor between this pin and the RX divider node is mandatory.
+  this->kick_pin_->digital_write(true);
+  this->kick_pin_->pin_mode(gpio::FLAG_OUTPUT);
+
+  this->kick_active_ = true;
+  this->kick_release_ms_ = now + KICK_PULSE_MS;
+  this->last_kick_ms_ = now;
+  this->last_tx_ms_ = now;
+  this->kick_count_++;
+
+  ESP_LOGW(TAG, "[%s] RX KICK start reason=%s count=%u", VERSION, reason,
+           static_cast<unsigned>(this->kick_count_));
+}
+
+void TosotAC::finish_kick_() {
+  if (this->kick_pin_ == nullptr || !this->kick_active_)
+    return;
+
+  // Return D5 to true high impedance; it must not bias the UART line while the AC
+  // is exchanging data.
+  this->kick_pin_->pin_mode(gpio::FLAG_INPUT);
+  this->kick_active_ = false;
+  this->flush_uart_();
+  this->reset_rx_parser_();
+
+  // Poll immediately after releasing the line.
+  this->last_tx_ms_ = millis() - POLL_INTERVAL_MS;
+  ESP_LOGI(TAG, "[%s] RX KICK released; pin is high-Z", VERSION);
+}
+
+void TosotAC::flush_uart_() {
+  while (this->available() > 0) {
+    uint8_t value = 0;
+    if (!this->read_byte(&value))
+      break;
+  }
 }
 
 void TosotAC::send_next_() {
@@ -316,11 +407,12 @@ void TosotAC::decode_report_(const std::vector<uint8_t> &frame) {
 
 void TosotAC::report_summary_() {
   ESP_LOGI(TAG,
-           "[%s] SUMMARY tx=%u rx_bytes=%u frames=%u reports_2F31=%u bad_checksum=%u resync=%u publishes=%u ready=%s",
+           "[%s] SUMMARY tx=%u rx_bytes=%u frames=%u reports_2F31=%u bad_checksum=%u resync=%u publishes=%u kicks=%u kick_active=%s ready=%s",
            VERSION, static_cast<unsigned>(this->tx_count_), static_cast<unsigned>(this->rx_byte_count_),
            static_cast<unsigned>(this->rx_frame_count_), static_cast<unsigned>(this->rx_report_31_count_),
            static_cast<unsigned>(this->bad_checksum_count_), static_cast<unsigned>(this->rx_resync_count_),
-           static_cast<unsigned>(this->publish_count_), this->ready_ ? "YES" : "no");
+           static_cast<unsigned>(this->publish_count_), static_cast<unsigned>(this->kick_count_),
+           this->kick_active_ ? "YES" : "no", this->ready_ ? "YES" : "no");
 }
 
 void TosotAC::log_frame_(const char *prefix, const std::vector<uint8_t> &frame) const {
