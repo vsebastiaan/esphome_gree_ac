@@ -151,5 +151,24 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   uint8_t control_stage_{0};
 };
 
+// Exact GWH18 behaviour observed on hardware. This thin model-specific layer
+// intentionally keeps the proven v5 UART protocol implementation above, while
+// exposing only UI controls that the physical Tosot actually implements.
+class TosotGWH18AC : public TosotAC {
+ public:
+  climate::ClimateTraits traits() override;
+  void loop() override;
+
+  // Hide the generic family setters with GWH18-specific mappings.
+  void set_vertical_swing_select(select::Select *value);
+  void set_display_select(select::Select *value);
+
+ protected:
+  select::Select *gwh18_vertical_swing_select_{nullptr};
+  select::Select *gwh18_display_select_{nullptr};
+  uint8_t gwh18_last_vertical_ui_code_{0xFF};
+  int8_t gwh18_last_display_ui_index_{-1};
+};
+
 }  // namespace tosot_ac
 }  // namespace esphome
