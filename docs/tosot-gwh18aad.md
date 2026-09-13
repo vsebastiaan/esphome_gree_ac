@@ -2,9 +2,9 @@
 
 This document describes the hardware and UART behaviour that was **measured on a real Tosot GWH18AAD-K6DNA1B/I** while replacing the original CS532AE-style Wi-Fi module with a Wemos D1 mini / ESP8266.
 
-The goal is to leave a reproducible path for the next person: what wire is TX/RX, which UART settings work, why a seemingly unnecessary GPIO14/D5 connection is required on the tested unit, and which climate functions have actually been verified instead of merely inherited from a related Gree/Sinclair implementation.
+The goal is to leave a reproducible path for the next person: what wire is TX/RX, which UART settings work, the unusual RX-startup behaviour seen on the tested unit, and which climate functions have actually been verified instead of merely inherited from a related Gree/Sinclair implementation.
 
-> Use at your own risk. The AC-side UART is not a native 3.3 V ESP8266 interface. Do not connect the AC TX line directly to GPIO3 and do not connect the D5 kick pin directly to the RX node.
+> Use at your own risk. The AC-side UART is not a native 3.3 V ESP8266 interface. Do not connect the AC TX line directly to GPIO3 and do not connect the D5 test/kick pin directly to the RX node.
 
 ## Tested serial settings
 
@@ -17,8 +17,6 @@ The goal is to leave a reproducible path for the next person: what wire is TX/RX
 - D1 `GPIO3` = RX
 - TX is configured as **inverted in software** because the tested interface uses an NPN transistor on the D1 -> AC direction
 
-These settings match the broader Gree UART reverse-engineering work in `bekmansurov/gree-hvac-protocol`, but the wiring and startup-kick behaviour below were verified on this Tosot unit.
-
 ## Confirmed wiring
 
 The tested AC connector uses:
@@ -27,7 +25,7 @@ The tested AC connector uses:
 - **BLACK = AC RX** <- driven by **D1 TX / GPIO1** through the transistor interface
 - **BROWN = GND**
 
-### AC TX -> D1 RX divider and startup kick
+### AC TX -> D1 RX divider and D5 test connection
 
 ```text
 AC ORANGE (AC TX)
@@ -65,31 +63,38 @@ GPIO1 / TX
 
 The NPN stage inverts the signal, therefore the ESPHome UART TX pin is configured with `inverted: true`.
 
-## The unusual D5 startup kick
+## The unusual RX startup problem
 
-This was the hardest part of the prototype.
+This was the hardest part of the prototype and is still the only part that is not yet fully explained.
 
-On the tested GWH18, normal TX polling alone did not reliably bring the AC UART receive path to life after a cold ESP reset. During debugging, attaching/touching the RX line with the extra sniffer hardware caused communication to start. This pointed to a line-state/startup effect rather than a packet-format problem.
+The AC **does answer the normal `2F/01` poll**. There is no additional protocol handshake required before the AC starts replying. The problem is on the ESP8266 receive side: after some cold starts the D1 sees **zero RX bytes** even though the AC is responding.
 
-The final working solution uses **GPIO14 / D5 as a temporary RX-line kick**:
+The key hardware observation was made with an additional UART sniffer:
 
-1. D5 is normally configured as input/high-impedance.
-2. At boot it is driven HIGH for about 100 ms through 4.7 kOhm to the RX divider node.
-3. No UART poll is transmitted during the pulse and any garbage bytes are flushed.
-4. D5 is returned to input/high-Z.
-5. The driver immediately sends the normal poll.
-6. Once a valid `2F/31` report arrives, normal communication continues without further kicks.
-7. If startup does not succeed, the driver retries. After a working link has been established, the kick is only used as RX-timeout recovery.
+1. Without the extra sniffer attached, the D1 could fail to see the AC replies at startup.
+2. As soon as the sniffer was attached to the UART lines, the D1 started receiving valid `2F/31` frames.
+3. After reception had started, removing the extra sniffer connection did **not** stop communication; the D1 kept receiving normally.
+4. This rules strongly against a missing protocol initialization sequence and points instead to an electrical/input-state effect on the D1 RX node during startup.
 
-Typical successful logging:
+Several static bias/divider changes were tried during debugging without producing a reliable final solution, including alternate pull/bias resistors and divider values.
 
-```text
-[tosot-gwh18-v4] RX KICK start reason=boot count=1
-[tosot-gwh18-v4] RX KICK released; pin is high-Z
-[tosot-gwh18-v4] SUMMARY ... reports_2F31=... kicks=1 kick_active=no ready=YES
-```
+A GPIO14/D5 pulse through 4.7 kOhm to the divider midpoint was then added to imitate the electrical disturbance that made the sniffer-assisted startup work:
 
-On this prototype the D5 kick changed the setup from "works only after the sniffer touches the line" to reliable standalone startup.
+1. D5 is normally input/high-impedance.
+2. During a kick it is driven HIGH briefly through the 4.7 kOhm series resistor.
+3. UART polling is paused during the pulse and any garbage is discarded.
+4. D5 returns to input/high-Z and normal `2F/01` polling resumes.
+
+This kick **often starts reception immediately and initially appeared fully reliable**, but later testing showed that some boots still require many retries before the D1 begins seeing RX bytes. Once RX starts, communication is stable and valid `2F/31` reports continue normally.
+
+Therefore the current evidence is:
+
+- normal Gree/Tosot polling is sufficient at protocol level;
+- the AC is replying from the beginning;
+- the remaining startup issue is electrical/receiver-side;
+- the D5 kick is a promising workaround, but not yet proven 100% deterministic.
+
+The most useful remaining hardware experiment is to reproduce the sniffer's electrical loading/reference effect rather than invent extra UART handshake packets.
 
 ## Known-good ESPHome UART configuration
 
@@ -107,7 +112,7 @@ uart:
   rx_buffer_size: 512
 ```
 
-The climate component also needs:
+The current diagnostic climate component also uses:
 
 ```yaml
 kick_pin: GPIO14
@@ -164,7 +169,7 @@ The generic ESPHome `swing_mode` control is intentionally not advertised for thi
 Only the following UI choices were useful on the tested unit:
 
 - Off
-- Show set temperature
+- On (shows set temperature)
 
 Other family-level display modes were removed from the GWH18-facing UI after hardware testing.
 
@@ -197,8 +202,6 @@ These are based on closely related Gree/Sinclair packet mappings. They must be t
 
 Tosot/Gree products can expose an **8 °C heating / steady-heat / absence mode**. This is a separate function, not simply a normal 8 °C target temperature; the normal target-temperature field starts at 16 °C.
 
-On Tosot documentation for compatible units, 8 °C heating is entered while in Heat mode by pressing **TEMP + CLOCK simultaneously** on the original remote.
-
 The **Wi-Fi-level** Gree property is commonly called `StHt`, but the corresponding bit in this tested UART `2F/31` dialect has not yet been identified. Therefore the project does not currently transmit a guessed 8 °C bit.
 
 ### How to discover it on this unit
@@ -215,32 +218,19 @@ RX DELTA byte=N 0xAA->0xBB known_mask=0x.. unknown_bits=0x..
 5. Disable 8 °C heating again and verify the same bit reverses.
 6. Once a repeatable bit is found, add it as a dedicated `EXP - 8°C verwarming` control and test it before promoting it to supported status.
 
-This is safer than guessing an undocumented write bit.
-
 ## Unknown / extra telemetry
 
 The driver logs valid non-`0x31` responses separately as `RX OTHER`. Gree UART reverse engineering has observed `0x33` frames whose meaning is still unknown.
 
 This leaves room to investigate whether the unit exposes additional values such as compressor state/frequency, coil temperature, outdoor-unit values or other service information. None of those values should be named or published as sensors until a repeatable correlation has been demonstrated.
 
-## Protocol references
-
-Useful prior art:
-
-- https://github.com/bekmansurov/gree-hvac-protocol — reverse engineered Gree UART protocol and `2C`/`2F,31` packet fields
-- https://github.com/cmroche/greeclimate — Gree Wi-Fi property names such as `Tur`, `StHt`, `SvSt`, `Quiet`, `Health` and `Blo`
-- https://tosotamerica.com/wp-content/uploads/2020/06/8C-Heating-TOSOT.pdf — Tosot 8 °C heating instructions
-
-The important distinction is that the first source describes the **local UART link**, while `greeclimate` describes the higher-level Wi-Fi protocol. A Wi-Fi property name does not automatically tell us which UART bit to write; hardware verification remains necessary.
-
 ## Project status
 
-The basic replacement module is now proven on the test unit:
+The basic UART/control path is proven on the test unit:
 
-- standalone boot without the original Wi-Fi module
-- reliable RX startup using the D5 kick
-- continuous valid `2F/31` reports
-- bidirectional control
-- mode, fan, target temperature, display and vertical-louvre behaviour mapped on real hardware
+- normal `2F/01` polling receives valid `2F/31` state reports once RX is active;
+- bidirectional control works;
+- mode, fan, target temperature, display and vertical-louvre behaviour are mapped on real hardware;
+- the remaining engineering issue is making RX startup deterministic without relying on the external sniffer.
 
-The remaining work is a short experimental-function verification round (especially Turbo) and then the tested mapping can be treated as the GWH18 baseline.
+The D5 kick remains in the diagnostic build because it often bootstraps RX successfully, but the project should not describe it as a final guaranteed startup solution until repeated cold-start testing proves that.
