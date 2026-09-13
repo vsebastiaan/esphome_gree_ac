@@ -14,11 +14,9 @@
 # - TX is inverted in software because the NPN transistor inverts it.
 # - D5 is normally high-impedance. The driver drives it HIGH for 100 ms at boot,
 #   then releases it. On the tested GWH18 the UART did not reliably start after a
-#   cold reset without this kick. If no valid 2F/31 report arrives, the kick is
-#   retried; after communication is established it is only used for RX recovery.
+#   cold reset without this kick.
 #
-# The EXP-prefixed entities are deliberately separated from the normal controls.
-# They are protocol-family mappings that should be verified on the physical unit.
+# EXP-prefixed entities are deliberately separated from proven normal controls.
 
 esphome:
   name: airco-huiskamer
@@ -59,7 +57,7 @@ external_components:
   - source:
       type: git
       url: https://github.com/vsebastiaan/esphome_gree_ac
-      ref: b142a23fbb9c292c1e4d054c14b34acdb57a0254
+      ref: 87a4152ef21b5fc74b8c5f754a9cd49c6ce093f0
     components: [tosot_ac]
     refresh: 0s
 
@@ -70,15 +68,15 @@ climate:
     uart_id: ac_uart
     kick_pin: GPIO14
 
-    # Hardware-confirmed GWH18 controls.
+    # Normale GWH18-bediening.
+    fan_speed_select:
+      name: "Fan snelheid"
     vertical_swing_select:
       name: "Verticale lamel"
     display_select:
       name: "Display"
 
-    # Experimental / verification round.
-    # Turbo should be tested in COOL and HEAT. Related Gree UART captures show
-    # byte 10 changing 0x06->0x07 (cool) and 0x0E->0x0F (heat).
+    # Experimentele functies voor de laatste hardware-verificatieronde.
     turbo_switch:
       name: "EXP - Turbo"
     sleep_switch:
