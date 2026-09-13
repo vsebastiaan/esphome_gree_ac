@@ -18,9 +18,6 @@
 # Both directions are inverted by the NPN stages, so both UART pins are
 # configured inverted in software.
 #
-# The earlier resistor-divider + D5 startup-kick experiment is NOT needed with
-# this final dual-transistor interface.
-#
 # Normal GWH18 controls are auto-created. Unverified family-level functions
 # remain opt-in so they do not clutter a normal Homey/ESPHome device.
 
