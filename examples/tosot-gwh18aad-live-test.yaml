@@ -3,9 +3,13 @@
 #   GPIO1/TX -> 4.7k -> base 2N3904; emitter -> GND; collector -> BLACK (AC RX)
 #   ORANGE (AC TX) -> 4.7k -> RX node -> GPIO3
 #   RX node -> 10k -> GND
-#   RX node -> 47k -> 3V3
+#   GPIO14 / D5 -> 4.7k -> RX node   (short automatic startup/recovery kick)
 #   BROWN -> GND
+#
 # TX is inverted in software because the NPN transistor inverts it.
+# D5 is normally high-impedance. The driver drives it HIGH for 100 ms at boot,
+# then releases it. If no valid 2F/31 report arrives it retries after 2 seconds;
+# after communication is established it only retries after a 5-second RX timeout.
 
 esphome:
   name: airco-huiskamer
@@ -16,7 +20,7 @@ esp8266:
 
 logger:
   baud_rate: 0
-  level: VERBOSE
+  level: INFO
 
 api:
   encryption:
@@ -44,11 +48,12 @@ uart:
 
 external_components:
   - source: github://vsebastiaan/esphome_gree_ac@main
-    components: [sinclair_ac]
+    components: [tosot_ac]
     refresh: 0s
 
 climate:
-  - platform: sinclair_ac
+  - platform: tosot_ac
     id: tosot_huiskamer
     name: "Airco huiskamer"
     uart_id: ac_uart
+    kick_pin: GPIO14
