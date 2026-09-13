@@ -7,6 +7,12 @@ on:
       - 'components/tosot_ac/**'
       - 'tests/compile_tosot_ac.yaml'
       - '.github/workflows/test-tosot.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'components/tosot_ac/**'
+      - 'tests/compile_tosot_ac.yaml'
+      - '.github/workflows/test-tosot.yml'
   workflow_dispatch:
 
 permissions:

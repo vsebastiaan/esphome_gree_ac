@@ -1,15 +1,28 @@
-# Live-control test for Tosot GWH18AAD-K6DNA1B/I on a Wemos D1 mini.
-# Confirmed wiring for this unit:
-#   GPIO1/TX -> 4.7k -> base 2N3904; emitter -> GND; collector -> BLACK (AC RX)
-#   ORANGE (AC TX) -> 4.7k -> RX node -> GPIO3
-#   RX node -> 10k -> GND
-#   GPIO14 / D5 -> 4.7k -> RX node   (short automatic startup/recovery kick)
-#   BROWN -> GND
+# Live-control example for Tosot GWH18AAD-K6DNA1B/I on a Wemos D1 mini.
 #
-# TX is inverted in software because the NPN transistor inverts it.
-# D5 is normally high-impedance. The driver drives it HIGH for 100 ms at boot,
-# then releases it. If no valid 2F/31 report arrives it retries after 2 seconds;
-# after communication is established it only retries after a 5-second RX timeout.
+# FINAL HARDWARE VERIFIED ON THE TEST UNIT
+#
+# AC -> D1 RX:
+#   ORANGE (AC TX) -> 22k -> base 2N3904
+#   2N3904 emitter -> BROWN/GND
+#   2N3904 collector -> GPIO3 / D1 RX
+#   GPIO3 / collector -> 10k -> 3.3V
+#
+# D1 TX -> AC:
+#   GPIO1 / D1 TX -> 4.7k -> base 2N3904
+#   2N3904 emitter -> BROWN/GND
+#   2N3904 collector -> BLACK (AC RX)
+#   No external pull-up is added on BLACK: the AC already pulls this line high
+#   (measured around 4.8V on the tested unit), so the NPN only sinks it low.
+#
+# Both directions are inverted by the NPN stages, so both UART pins are
+# configured inverted in software.
+#
+# The earlier resistor-divider + D5 startup-kick experiment is NOT needed with
+# this final dual-transistor interface.
+#
+# Normal GWH18 controls are auto-created. Unverified family-level functions
+# remain opt-in so they do not clutter a normal Homey/ESPHome device.
 
 esphome:
   name: airco-huiskamer
@@ -20,7 +33,7 @@ esp8266:
 
 logger:
   baud_rate: 0
-  level: INFO
+  level: DEBUG
 
 api:
   encryption:
@@ -39,7 +52,9 @@ uart:
   tx_pin:
     number: GPIO1
     inverted: true
-  rx_pin: GPIO3
+  rx_pin:
+    number: GPIO3
+    inverted: true
   baud_rate: 4800
   data_bits: 8
   parity: EVEN
@@ -47,7 +62,10 @@ uart:
   rx_buffer_size: 512
 
 external_components:
-  - source: github://vsebastiaan/esphome_gree_ac@main
+  - source:
+      type: git
+      url: https://github.com/vsebastiaan/esphome_gree_ac
+      ref: main
     components: [tosot_ac]
     refresh: 0s
 
@@ -56,4 +74,29 @@ climate:
     id: tosot_huiskamer
     name: "Airco huiskamer"
     uart_id: ac_uart
-    kick_pin: GPIO14
+
+    # Optional controlled tests. Uncomment only when you want to investigate
+    # these family-level mappings on real hardware.
+    # save_select:
+    #   name: "TEST - Save Eco"
+    # xfan_select:
+    #   name: "TEST - X-Fan"
+    # plasma_select:
+    #   name: "TEST - Health Plasma"
+    # beeper_select:
+    #   name: "TEST - Beeper"
+
+# Auto-created entities:
+#   Ventilatorsnelheid    Automatisch / Laag / Midden / Hoog / Turbo
+#   Verticale lamel       Swing / Hoogste / Hoog / Midden / Laag / Laagste
+#   Display               Uit / Aan
+#   Slaapstand            Uit / Aan
+#
+# Homey localises the standard climate modes to Dutch, e.g.:
+#   Automatisch / Koelen / Verwarmen / Ontvochtigen / Alleen ventileren / Uit
+#
+# Opt-in test entities:
+#   TEST - Save Eco        AC acknowledges; actual energy effect not yet proven
+#   TEST - X-Fan           expected coil-dry function after COOL/DRY shutdown
+#   TEST - Health Plasma   AC acknowledges; fitted hardware/effect unknown
+#   TEST - Beeper          no useful effect observed on the tested GWH18
