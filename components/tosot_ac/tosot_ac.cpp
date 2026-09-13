@@ -9,10 +9,9 @@ namespace esphome {
 namespace tosot_ac {
 
 static const char *const TAG = "tosot_ac";
-static const char *const VERSION = "tosot-gwh18-v1";
+static const char *const VERSION = "tosot-gwh18-v2";
 
 // Exact passive 2F/01 request captured from the original CS532AE on BLACK.
-// This is known to make the GWH18AAD-K6DNA1B/I answer with a 2F/31 report.
 static const uint8_t STOCK_POLL[50] = {
     0x7E, 0x7E, 0x2F, 0x01, 0x00, 0x00, 0x00, 0x00, 0x10, 0x60,
     0x02, 0x02, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -21,10 +20,13 @@ static const uint8_t STOCK_POLL[50] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xB4};
 
 void TosotAC::setup() {
-  this->last_tx_ms_ = millis() - POLL_INTERVAL_MS;
+  const uint32_t now = millis();
+  this->last_tx_ms_ = now - POLL_INTERVAL_MS;
+  this->next_summary_ms_ = now + SUMMARY_INTERVAL_MS;
   this->mode = climate::CLIMATE_MODE_OFF;
   this->target_temperature = 22.0f;
   ESP_LOGI(TAG, "[%s] Starting exact-stock Tosot climate driver", VERSION);
+  ESP_LOGI(TAG, "[%s] RX parser is the proven gree_replay parser; raw RX counters enabled", VERSION);
 }
 
 climate::ClimateTraits TosotAC::traits() {
@@ -39,12 +41,24 @@ climate::ClimateTraits TosotAC::traits() {
 }
 
 void TosotAC::loop() {
-  this->read_uart_();
+  // Keep this receive loop byte-for-byte equivalent in behaviour to gree_replay.
+  while (this->available() > 0) {
+    uint8_t value = 0;
+    if (!this->read_byte(&value))
+      break;
+    this->rx_byte_count_++;
+    this->consume_rx_byte_(value);
+  }
 
   const uint32_t now = millis();
   if (now - this->last_tx_ms_ >= POLL_INTERVAL_MS) {
     this->send_next_();
     this->last_tx_ms_ = now;
+  }
+
+  if (static_cast<int32_t>(now - this->next_summary_ms_) >= 0) {
+    this->report_summary_();
+    this->next_summary_ms_ = now + SUMMARY_INTERVAL_MS;
   }
 }
 
@@ -60,115 +74,107 @@ void TosotAC::control(const climate::ClimateCall &call) {
     this->desired_power_ = requested != climate::CLIMATE_MODE_OFF;
 
     switch (requested) {
-      case climate::CLIMATE_MODE_AUTO:
-        this->desired_mode_code_ = 0;
-        break;
-      case climate::CLIMATE_MODE_COOL:
-        this->desired_mode_code_ = 1;
-        break;
-      case climate::CLIMATE_MODE_DRY:
-        this->desired_mode_code_ = 2;
-        break;
-      case climate::CLIMATE_MODE_FAN_ONLY:
-        this->desired_mode_code_ = 3;
-        break;
-      case climate::CLIMATE_MODE_HEAT:
-        this->desired_mode_code_ = 4;
-        break;
+      case climate::CLIMATE_MODE_AUTO: this->desired_mode_code_ = 0; break;
+      case climate::CLIMATE_MODE_COOL: this->desired_mode_code_ = 1; break;
+      case climate::CLIMATE_MODE_DRY: this->desired_mode_code_ = 2; break;
+      case climate::CLIMATE_MODE_FAN_ONLY: this->desired_mode_code_ = 3; break;
+      case climate::CLIMATE_MODE_HEAT: this->desired_mode_code_ = 4; break;
       case climate::CLIMATE_MODE_OFF:
-      default:
-        // Keep the last actual mode code; only clear the power bit.
-        this->desired_mode_code_ = this->last_mode_code_;
-        break;
+      default: this->desired_mode_code_ = this->last_mode_code_; break;
     }
   }
 
-  if (call.get_target_temperature().has_value()) {
+  if (call.get_target_temperature().has_value())
     this->desired_target_temperature_ = std::max(16.0f, std::min(30.0f, *call.get_target_temperature()));
-  }
 
   this->control_stage_ = 2;
   ESP_LOGI(TAG, "[%s] Control queued: power=%s mode=%u target=%.0f", VERSION,
            this->desired_power_ ? "ON" : "OFF", this->desired_mode_code_, this->desired_target_temperature_);
 }
 
-void TosotAC::read_uart_() {
-  while (this->available() > 0) {
-    uint8_t value = 0;
-    if (!this->read_byte(&value))
-      break;
-    this->consume_byte_(value);
-  }
-}
-
-void TosotAC::consume_byte_(uint8_t value) {
-  if (this->rx_frame_.empty()) {
-    if (value == 0x7E)
-      this->rx_frame_.push_back(value);
-    return;
-  }
-
-  if (this->rx_frame_.size() == 1) {
+void TosotAC::consume_rx_byte_(uint8_t value) {
+  if (this->rx_pos_ == 0) {
     if (value == 0x7E) {
-      this->rx_frame_.push_back(value);
-    } else {
-      this->rx_frame_.clear();
+      this->rx_buffer_[0] = value;
+      this->rx_pos_ = 1;
     }
     return;
   }
 
-  this->rx_frame_.push_back(value);
+  if (this->rx_pos_ == 1) {
+    if (value == 0x7E) {
+      this->rx_buffer_[1] = value;
+      this->rx_pos_ = 2;
+    } else {
+      this->rx_resync_count_++;
+      this->reset_rx_parser_();
+    }
+    return;
+  }
 
-  if (this->rx_frame_.size() == 3) {
-    const size_t expected = static_cast<size_t>(this->rx_frame_[2]) + 3U;
-    if (expected < 5 || expected > FRAME_MAX) {
-      this->rx_frame_.clear();
-      this->rx_expected_ = 0;
+  if (this->rx_pos_ == 2) {
+    this->rx_buffer_[2] = value;
+    const uint16_t expected = static_cast<uint16_t>(value) + 3U;
+    if (expected < 5U || expected > RX_BUFFER_SIZE) {
+      this->rx_resync_count_++;
+      this->reset_rx_parser_();
       return;
     }
-    this->rx_expected_ = expected;
+    this->rx_expected_ = static_cast<uint8_t>(expected);
+    this->rx_pos_ = 3;
+    return;
   }
 
-  if (this->rx_expected_ != 0 && this->rx_frame_.size() == this->rx_expected_) {
-    this->finish_frame_();
-    this->rx_frame_.clear();
-    this->rx_expected_ = 0;
-  } else if (this->rx_frame_.size() >= FRAME_MAX) {
-    this->rx_frame_.clear();
-    this->rx_expected_ = 0;
+  if (this->rx_pos_ >= RX_BUFFER_SIZE) {
+    this->rx_resync_count_++;
+    this->reset_rx_parser_();
+    return;
   }
+
+  this->rx_buffer_[this->rx_pos_++] = value;
+  if (this->rx_expected_ != 0 && this->rx_pos_ == this->rx_expected_)
+    this->finish_rx_frame_();
 }
 
-void TosotAC::finish_frame_() {
-  if (!this->checksum_ok_(this->rx_frame_)) {
+void TosotAC::finish_rx_frame_() {
+  const uint8_t size = this->rx_expected_;
+  this->rx_frame_count_++;
+
+  const uint8_t expected_checksum = this->checksum_array_(this->rx_buffer_, size);
+  const uint8_t actual_checksum = this->rx_buffer_[size - 1];
+  const bool checksum_ok = expected_checksum == actual_checksum;
+  if (!checksum_ok)
     this->bad_checksum_count_++;
-    ESP_LOGW(TAG, "[%s] Bad RX checksum (%u total)", VERSION, this->bad_checksum_count_);
-    return;
+
+  const uint8_t type = size > 3 ? this->rx_buffer_[3] : 0xFF;
+  const bool report31 = checksum_ok && this->rx_buffer_[2] == 0x2F && type == 0x31 && size == 50;
+
+  if (report31) {
+    this->rx_report_31_count_++;
+    this->last_report_.assign(this->rx_buffer_, this->rx_buffer_ + size);
+    this->decode_report_(this->last_report_);
   }
 
-  if (this->rx_frame_.size() != 50 || this->rx_frame_[2] != 0x2F || this->rx_frame_[3] != 0x31) {
-    ESP_LOGV(TAG, "[%s] Ignoring RX len=0x%02X type=0x%02X", VERSION, this->rx_frame_[2], this->rx_frame_[3]);
-    return;
+  if (this->rx_frame_count_ <= 10 || (this->rx_frame_count_ % 20) == 0 || !report31) {
+    ESP_LOGI(TAG, "[%s] RX frame=%u len=0x%02X type=0x%02X checksum=%s reports31=%u", VERSION,
+             static_cast<unsigned>(this->rx_frame_count_), this->rx_buffer_[2], type,
+             checksum_ok ? "OK" : "BAD", static_cast<unsigned>(this->rx_report_31_count_));
   }
 
-  this->rx_count_++;
-  this->last_report_ = this->rx_frame_;
-  this->decode_report_(this->rx_frame_);
-
-  if (this->rx_count_ <= 3 || (this->rx_count_ % 20) == 0)
-    this->log_frame_("RX 2F/31", this->rx_frame_);
+  this->reset_rx_parser_();
 }
 
-bool TosotAC::checksum_ok_(const std::vector<uint8_t> &frame) const {
-  if (frame.size() < 5)
-    return false;
-  return this->checksum_(frame) == frame.back();
+void TosotAC::reset_rx_parser_() {
+  this->rx_pos_ = 0;
+  this->rx_expected_ = 0;
 }
 
-uint8_t TosotAC::checksum_(const std::vector<uint8_t> &frame) const {
+uint8_t TosotAC::checksum_array_(const uint8_t *data, uint8_t size) const {
+  if (size < 4)
+    return 0;
   uint8_t sum = 0;
-  for (size_t i = 2; i + 1 < frame.size(); i++)
-    sum += frame[i];
+  for (uint8_t i = 2; i + 1 < size; i++)
+    sum += data[i];
   return sum;
 }
 
@@ -202,8 +208,6 @@ void TosotAC::send_control_(bool af) {
 std::vector<uint8_t> TosotAC::build_control_frame_(bool af) const {
   std::vector<uint8_t> frame(STOCK_POLL, STOCK_POLL + sizeof(STOCK_POLL));
 
-  // Preserve feature/swing/display fields from the most recent unit report where
-  // the Gree/Sinclair mapping is shared by SET and REPORT packets.
   if (this->last_report_.size() == 50) {
     frame[10] = this->last_report_[10];
     frame[11] = this->last_report_[11];
@@ -215,7 +219,6 @@ std::vector<uint8_t> TosotAC::build_control_frame_(bool af) const {
 
   frame[7] = af ? 0xAF : 0x00;
 
-  // Byte 8: power (bit 7), mode (bits 6..4), sleep/other preserved bits (3..2), fan (1..0).
   uint8_t status = this->last_report_.size() == 50 ? (this->last_report_[8] & 0x0C) : 0x00;
   if (this->desired_power_)
     status |= 0x80;
@@ -226,8 +229,15 @@ std::vector<uint8_t> TosotAC::build_control_frame_(bool af) const {
   const int target = static_cast<int>(std::round(this->desired_target_temperature_));
   frame[9] = static_cast<uint8_t>((std::max(16, std::min(30, target)) - 16) << 4);
 
-  frame.back() = this->checksum_(frame);
+  frame.back() = this->checksum_vector_(frame);
   return frame;
+}
+
+uint8_t TosotAC::checksum_vector_(const std::vector<uint8_t> &frame) const {
+  uint8_t sum = 0;
+  for (size_t i = 2; i + 1 < frame.size(); i++)
+    sum += frame[i];
+  return sum;
 }
 
 void TosotAC::decode_report_(const std::vector<uint8_t> &frame) {
@@ -241,24 +251,12 @@ void TosotAC::decode_report_(const std::vector<uint8_t> &frame) {
   climate::ClimateMode decoded_mode = climate::CLIMATE_MODE_OFF;
   if (power) {
     switch (mode_code) {
-      case 0:
-        decoded_mode = climate::CLIMATE_MODE_AUTO;
-        break;
-      case 1:
-        decoded_mode = climate::CLIMATE_MODE_COOL;
-        break;
-      case 2:
-        decoded_mode = climate::CLIMATE_MODE_DRY;
-        break;
-      case 3:
-        decoded_mode = climate::CLIMATE_MODE_FAN_ONLY;
-        break;
-      case 4:
-        decoded_mode = climate::CLIMATE_MODE_HEAT;
-        break;
-      default:
-        decoded_mode = climate::CLIMATE_MODE_OFF;
-        break;
+      case 0: decoded_mode = climate::CLIMATE_MODE_AUTO; break;
+      case 1: decoded_mode = climate::CLIMATE_MODE_COOL; break;
+      case 2: decoded_mode = climate::CLIMATE_MODE_DRY; break;
+      case 3: decoded_mode = climate::CLIMATE_MODE_FAN_ONLY; break;
+      case 4: decoded_mode = climate::CLIMATE_MODE_HEAT; break;
+      default: decoded_mode = climate::CLIMATE_MODE_OFF; break;
     }
   }
 
@@ -278,10 +276,20 @@ void TosotAC::decode_report_(const std::vector<uint8_t> &frame) {
 
   this->publish_state();
 
-  if (this->rx_count_ <= 3 || (this->rx_count_ % 20) == 0) {
-    ESP_LOGI(TAG, "[%s] State: power=%s mode=%u target=%.0f current=%.0f fan=%u rx=%u bad=%u", VERSION,
-             power ? "ON" : "OFF", mode_code, target, current, fan_code, this->rx_count_, this->bad_checksum_count_);
+  if (this->rx_report_31_count_ <= 3 || (this->rx_report_31_count_ % 20) == 0) {
+    ESP_LOGI(TAG, "[%s] State: power=%s mode=%u target=%.0f current=%.0f fan=%u reports31=%u", VERSION,
+             power ? "ON" : "OFF", mode_code, target, current, fan_code,
+             static_cast<unsigned>(this->rx_report_31_count_));
   }
+}
+
+void TosotAC::report_summary_() {
+  ESP_LOGI(TAG,
+           "[%s] SUMMARY tx=%u rx_bytes=%u frames=%u reports_2F31=%u bad_checksum=%u resync=%u ready=%s",
+           VERSION, static_cast<unsigned>(this->tx_count_), static_cast<unsigned>(this->rx_byte_count_),
+           static_cast<unsigned>(this->rx_frame_count_), static_cast<unsigned>(this->rx_report_31_count_),
+           static_cast<unsigned>(this->bad_checksum_count_), static_cast<unsigned>(this->rx_resync_count_),
+           this->ready_ ? "YES" : "no");
 }
 
 void TosotAC::log_frame_(const char *prefix, const std::vector<uint8_t> &frame) const {
