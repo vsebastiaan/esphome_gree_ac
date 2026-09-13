@@ -44,14 +44,10 @@ climate:
     uart_id: ac_uart
     kick_pin: GPIO14
 
-    horizontal_swing_select:
-      name: "Tosot Horizontal Swing"
     vertical_swing_select:
-      name: "Tosot Vertical Swing"
+      name: "Tosot Vertical Louver"
     display_select:
       name: "Tosot Display"
-    display_unit_select:
-      name: "Tosot Display Unit"
 
     turbo_switch:
       name: "Tosot Turbo"
