@@ -4,7 +4,6 @@
 > - AC **ORANGE (AC TX)** -> **22k** -> base **2N3904**; emitter -> **BROWN/GND**; collector -> **GPIO3/RX**; **10k pull-up from GPIO3/collector to 3.3V**.
 > - D1 **GPIO1/TX** -> **4.7k** -> base **2N3904**; emitter -> **BROWN/GND**; collector -> **BLACK (AC RX)**.
 > - **Do not add an external pull-up on BLACK.** The AC side already pulls BLACK/AC-RX high (measured around **4.8V** on the test unit); the transistor therefore only sinks that line low. The external 10k pull-up belongs on the ESP8266 RX collector side, to 3.3V.
-> - The earlier resistor-divider + GPIO14/D5 kick experiments are not part of the final build.
 >
 > The GWH18 profile exposes Dutch Homey-oriented controls: `Ventilatorsnelheid` = Automatisch / Laag / Midden / Hoog / Turbo, `Verticale lamel`, `Display` and `Slaapstand`. Standard climate modes are localized by Homey as Automatisch / Koelen / Verwarmen / Ontvochtigen / Alleen ventileren / Uit. Less certain family-level mappings such as Save/Eco, X-Fan, Health/Plasma and Beeper remain explicit opt-in test controls. No separate GWH18 Quiet/Stil fan mode has been proven or exposed.
 >
