@@ -98,25 +98,32 @@ See `examples/tosot-gwh18aad-live-test.yaml` for a complete test configuration.
 
 ### Climate modes
 
-- Off
-- Auto
-- Cool
-- Dry
-- Fan only
-- Heat
+ESPHome exposes the normal climate modes; Homey localises these in Dutch as:
 
-### Fan speed
+- Automatisch
+- Koelen
+- Verwarmen
+- Ontvochtigen
+- Alleen ventileren
+- Uit
 
-- Auto
-- Low
-- Medium
-- High
+### Ventilatorsnelheid
+
+The user-facing fan selector is deliberately Dutch and contains:
+
+- Automatisch
+- Laag
+- Midden
+- Hoog
+- Turbo
+
+Turbo is a separate UART protocol bit internally, but it is presented as the highest fan-speed choice because that is the most natural Homey control. Selecting a normal fan speed clears the Turbo bit again.
 
 ### Target temperature
 
 The normal protocol range is 16–30 °C.
 
-### Vertical louvre
+### Verticale lamel
 
 The generic Gree/Sinclair swing table is not correct as a user-facing mapping for this GWH18. Physical testing produced this useful subset:
 
@@ -133,40 +140,39 @@ The generic Gree/Sinclair swing table is not correct as a user-facing mapping fo
 The GWH18-specific component therefore exposes only:
 
 - Swing
-- Highest
-- High
-- Middle
-- Low
-- Lowest
+- Hoogste
+- Hoog
+- Midden
+- Laag
+- Laagste
 
 The generic ESPHome `swing_mode` control is intentionally not advertised for this model.
 
-### Indoor display
+### Display
 
 Only two useful states are exposed:
 
-- Off
-- On
+- Uit
+- Aan
 
 When on, this unit shows the set temperature.
 
 ### Turbo
 
-Turbo has now been physically tested on the GWH18 and works. It is therefore exposed as a normal control rather than an experimental one.
+Turbo has been physically tested on the GWH18 and works. It is integrated into `Ventilatorsnelheid` instead of being exposed as a separate switch/select.
 
-### Sleep
+### Slaapstand
 
-The GWH18 acknowledges the Sleep command with its normal confirmation beep. Sleep is a delayed comfort function, so its complete temperature/fan behaviour is not instantaneously visible during a short bench test. It is exposed by default, while its long-duration behaviour can still be checked in normal use.
+The GWH18 acknowledges the Sleep command with its normal confirmation beep. Sleep is a delayed comfort function, so its complete temperature/fan behaviour is not instantaneously visible during a short bench test. It is exposed by default as `Slaapstand` with `Uit` / `Aan`, while its long-duration behaviour can still be observed in normal use.
 
 ## Default UI entities
 
 A minimal climate block automatically creates:
 
-- `Fan snelheid`
-- `Verticale lamel`
-- `Display`
-- `Turbo`
-- `Sleep`
+- `Ventilatorsnelheid` — Automatisch / Laag / Midden / Hoog / Turbo
+- `Verticale lamel` — Swing / Hoogste / Hoog / Midden / Laag / Laagste
+- `Display` — Uit / Aan
+- `Slaapstand` — Uit / Aan
 
 The remaining family-level functions are deliberately **not** auto-created. They can still be enabled explicitly for controlled testing.
 
@@ -211,11 +217,15 @@ climate:
     #   name: "TEST - Beeper"
 ```
 
+## Quiet / stille modus
+
+No separate Quiet/Silent mode has been proven on this GWH18. Related Gree/Sinclair dialects suggest a possible quiet bit, but it is deliberately not exposed as a normal control without hardware proof.
+
 ## 8 °C frost-protection / steady heat
 
 Tosot/Gree products can expose a separate 8 °C heating/absence mode. It is not simply a normal 8 °C target because the normal target-temperature field starts at 16 °C.
 
-The higher-level Gree Wi-Fi property is commonly called `StHt`, but the exact write bit in this local `2F/31` UART dialect has not yet been proven. The v5 `RX DELTA` logging is intended to identify it with the original remote before adding an `EXP - 8°C verwarming` control.
+The higher-level Gree Wi-Fi property is commonly called `StHt`, but the exact write bit in this local `2F/31` UART dialect has not yet been proven. The v5 `RX DELTA` logging is intended to identify it with the original remote before adding an experimental control.
 
 ## Unknown / extra telemetry
 
@@ -223,7 +233,7 @@ The driver logs valid non-`0x31` responses separately as `RX OTHER`. This leaves
 
 ## Project status
 
-The replacement module is now functionally proven on the test unit:
+The normal replacement-module functionality is now reverse-engineered and usable on the tested GWH18:
 
 - deterministic RX startup using the dual-transistor interface
 - continuous valid `2F/31` reports
@@ -233,8 +243,9 @@ The replacement module is now functionally proven on the test unit:
 - target temperature mapped
 - vertical-louvre behaviour mapped on real hardware
 - display control mapped
-- Turbo physically verified
-- Sleep accepted and exposed for normal-use verification
+- Turbo physically verified and integrated into fan speed
+- Sleep accepted and exposed as Slaapstand
 - uncertain family-level functions moved behind explicit opt-in configuration
+- no unproven Quiet mode exposed
 
-The remaining work is a small amount of optional feature verification and then cleanup/merge for the public baseline.
+Any further work is optional protocol exploration rather than required functionality for normal Homey use.
