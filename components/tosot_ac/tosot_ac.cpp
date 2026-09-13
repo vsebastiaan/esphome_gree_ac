@@ -9,7 +9,7 @@ namespace esphome {
 namespace tosot_ac {
 
 static const char *const TAG = "tosot_ac";
-static const char *const VERSION = "tosot-gwh18-v2";
+static const char *const VERSION = "tosot-gwh18-v3";
 
 // Exact passive 2F/01 request captured from the original CS532AE on BLACK.
 static const uint8_t STOCK_POLL[50] = {
@@ -26,7 +26,7 @@ void TosotAC::setup() {
   this->mode = climate::CLIMATE_MODE_OFF;
   this->target_temperature = 22.0f;
   ESP_LOGI(TAG, "[%s] Starting exact-stock Tosot climate driver", VERSION);
-  ESP_LOGI(TAG, "[%s] RX parser is the proven gree_replay parser; raw RX counters enabled", VERSION);
+  ESP_LOGI(TAG, "[%s] RX parser is the proven gree_replay parser; state publishing is change-driven", VERSION);
 }
 
 climate::ClimateTraits TosotAC::traits() {
@@ -87,6 +87,10 @@ void TosotAC::control(const climate::ClimateCall &call) {
   if (call.get_target_temperature().has_value())
     this->desired_target_temperature_ = std::max(16.0f, std::min(30.0f, *call.get_target_temperature()));
 
+  // The next valid report must be published even if the returned values happen to
+  // equal our current in-memory values. This makes command acknowledgement visible
+  // to API clients without publishing every 300 ms poll response.
+  this->force_publish_ = true;
   this->control_stage_ = 2;
   ESP_LOGI(TAG, "[%s] Control queued: power=%s mode=%u target=%.0f", VERSION,
            this->desired_power_ ? "ON" : "OFF", this->desired_mode_code_, this->desired_target_temperature_);
@@ -260,6 +264,11 @@ void TosotAC::decode_report_(const std::vector<uint8_t> &frame) {
     }
   }
 
+  const auto previous_mode = this->mode;
+  const float previous_target = this->target_temperature;
+  const float previous_current = this->current_temperature;
+  const uint8_t previous_fan = this->last_fan_code_;
+
   this->ready_ = true;
   this->last_mode_code_ = mode_code <= 4 ? mode_code : this->last_mode_code_;
   this->last_fan_code_ = fan_code;
@@ -274,7 +283,29 @@ void TosotAC::decode_report_(const std::vector<uint8_t> &frame) {
     this->desired_target_temperature_ = target;
   }
 
-  this->publish_state();
+  const bool mode_changed = !this->state_published_ || previous_mode != decoded_mode;
+  const bool target_changed = !this->state_published_ || !std::isfinite(previous_target) ||
+                              std::fabs(previous_target - target) > 0.01f;
+  const bool current_changed = !this->state_published_ || !std::isfinite(previous_current) ||
+                               std::fabs(previous_current - current) > 0.01f;
+  const bool fan_changed = !this->state_published_ || previous_fan != fan_code;
+  const bool state_changed = mode_changed || target_changed || current_changed || fan_changed;
+
+  const uint32_t now = millis();
+  const bool heartbeat_due = this->state_published_ && (now - this->last_publish_ms_ >= STATE_HEARTBEAT_MS);
+  if (state_changed || this->force_publish_ || heartbeat_due) {
+    this->publish_state();
+    this->state_published_ = true;
+    this->force_publish_ = false;
+    this->last_publish_ms_ = now;
+    this->publish_count_++;
+
+    ESP_LOGD(TAG, "[%s] Published climate state (%s%s%s) publishes=%u", VERSION,
+             state_changed ? "changed" : "",
+             heartbeat_due ? (state_changed ? "+heartbeat" : "heartbeat") : "",
+             (!state_changed && !heartbeat_due) ? "command-ack" : "",
+             static_cast<unsigned>(this->publish_count_));
+  }
 
   if (this->rx_report_31_count_ <= 3 || (this->rx_report_31_count_ % 20) == 0) {
     ESP_LOGI(TAG, "[%s] State: power=%s mode=%u target=%.0f current=%.0f fan=%u reports31=%u", VERSION,
@@ -285,11 +316,11 @@ void TosotAC::decode_report_(const std::vector<uint8_t> &frame) {
 
 void TosotAC::report_summary_() {
   ESP_LOGI(TAG,
-           "[%s] SUMMARY tx=%u rx_bytes=%u frames=%u reports_2F31=%u bad_checksum=%u resync=%u ready=%s",
+           "[%s] SUMMARY tx=%u rx_bytes=%u frames=%u reports_2F31=%u bad_checksum=%u resync=%u publishes=%u ready=%s",
            VERSION, static_cast<unsigned>(this->tx_count_), static_cast<unsigned>(this->rx_byte_count_),
            static_cast<unsigned>(this->rx_frame_count_), static_cast<unsigned>(this->rx_report_31_count_),
            static_cast<unsigned>(this->bad_checksum_count_), static_cast<unsigned>(this->rx_resync_count_),
-           this->ready_ ? "YES" : "no");
+           static_cast<unsigned>(this->publish_count_), this->ready_ ? "YES" : "no");
 }
 
 void TosotAC::log_frame_(const char *prefix, const std::vector<uint8_t> &frame) const {
