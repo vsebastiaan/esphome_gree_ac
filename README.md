@@ -1,6 +1,6 @@
 > **Tosot GWH18 / Wemos D1 mini:** this fork now also contains a hardware-tested UART replacement path for the Tosot GWH18AAD-K6DNA1B/I. It uses 4800 8E1 and NPN transistor interfaces in both UART directions, with both ESP8266 UART pins configured inverted. See [`docs/tosot-gwh18aad.md`](docs/tosot-gwh18aad.md) and [`examples/tosot-gwh18aad-live-test.yaml`](examples/tosot-gwh18aad-live-test.yaml).
 >
-> The GWH18 profile now exposes the hardware-tested normal controls plus **Turbo** and **Sleep** by default. Less certain family-level mappings such as Save/Eco, X-Fan, Health/Plasma and Beeper remain explicit opt-in test controls until their real effect has been verified on this model.
+> The GWH18 profile exposes Dutch Homey-oriented controls: `Ventilatorsnelheid` = Automatisch / Laag / Midden / Hoog / Turbo, `Verticale lamel`, `Display` and `Slaapstand`. Standard climate modes are localized by Homey as Automatisch / Koelen / Verwarmen / Ontvochtigen / Alleen ventileren / Uit. Less certain family-level mappings such as Save/Eco, X-Fan, Health/Plasma and Beeper remain explicit opt-in test controls.
 >
 > **Diagnostic fork (vsebastiaan):** adds a UART response-timeout retry so a single missed AC reply cannot leave `wait_response_` latched forever. This is intentionally a minimal diagnostic change on top of `gekkehenkie11/esphome_gree_ac`.
 
