@@ -159,13 +159,16 @@ class TosotGWH18AC : public TosotAC {
   climate::ClimateTraits traits() override;
   void loop() override;
 
-  // Hide the generic family setters with GWH18-specific mappings.
+  // GWH18-specific UI mappings.
+  void set_fan_speed_select(select::Select *value);
   void set_vertical_swing_select(select::Select *value);
   void set_display_select(select::Select *value);
 
  protected:
+  select::Select *gwh18_fan_speed_select_{nullptr};
   select::Select *gwh18_vertical_swing_select_{nullptr};
   select::Select *gwh18_display_select_{nullptr};
+  uint8_t gwh18_last_fan_ui_code_{0xFF};
   uint8_t gwh18_last_vertical_ui_code_{0xFF};
   int8_t gwh18_last_display_ui_index_{-1};
 };
