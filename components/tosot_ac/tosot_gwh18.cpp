@@ -1,5 +1,7 @@
 #include "tosot_ac.h"
 
+#include <cmath>
+
 #include "esphome/core/log.h"
 
 namespace esphome {
@@ -42,9 +44,24 @@ void TosotGWH18AC::loop() {
   if (!this->ready_)
     return;
 
+  const uint32_t now = millis();
+  const bool heartbeat_due = this->gwh18_last_ui_publish_ms_ == 0 ||
+                             now - this->gwh18_last_ui_publish_ms_ >= STATE_HEARTBEAT_MS;
+
+  // Mirror the decoded room temperature as a normal ESPHome sensor. Homey
+  // reliably maps SensorState values even on versions where the native
+  // ClimateState current_temperature remains empty.
+  if (this->room_temperature_sensor_ != nullptr) {
+    const bool changed = !this->room_temperature_sensor_->has_state() ||
+                         !std::isfinite(this->room_temperature_sensor_->state) ||
+                         std::fabs(this->room_temperature_sensor_->state - this->current_temperature) > 0.01f;
+    if (changed || heartbeat_due)
+      this->room_temperature_sensor_->publish_state(this->current_temperature);
+  }
+
   if (this->gwh18_fan_speed_select_ != nullptr && this->last_fan_code_ <= 3) {
     const uint8_t ui_code = this->actual_turbo_ ? 4 : this->last_fan_code_;
-    if (ui_code != this->gwh18_last_fan_ui_code_) {
+    if (ui_code != this->gwh18_last_fan_ui_code_ || heartbeat_due) {
       this->gwh18_last_fan_ui_code_ = ui_code;
       this->gwh18_fan_speed_select_->publish_state(GWH18_FAN_OPTIONS[ui_code]);
     }
@@ -59,17 +76,17 @@ void TosotGWH18AC::loop() {
       ui_code = this->actual_vertical_swing_code_;
     }
 
-    if (ui_code != 0xFF && ui_code != this->gwh18_last_vertical_ui_code_) {
+    if (ui_code != 0xFF && (ui_code != this->gwh18_last_vertical_ui_code_ || heartbeat_due)) {
       this->gwh18_last_vertical_ui_code_ = ui_code;
       this->gwh18_vertical_swing_select_->publish_state(GWH18_VERTICAL_OPTIONS[ui_code - 1]);
     }
   }
 
-  auto publish_bool_select = [](select::Select *entity, bool state, int8_t &last_index) {
+  auto publish_bool_select = [heartbeat_due](select::Select *entity, bool state, int8_t &last_index) {
     if (entity == nullptr)
       return;
     const int8_t index = state ? 1 : 0;
-    if (index == last_index)
+    if (index == last_index && !heartbeat_due)
       return;
     last_index = index;
     entity->publish_state(GWH18_ON_OFF_OPTIONS[index]);
@@ -81,6 +98,9 @@ void TosotGWH18AC::loop() {
   publish_bool_select(this->gwh18_sleep_select_, this->actual_sleep_, this->gwh18_last_sleep_ui_index_);
   publish_bool_select(this->gwh18_xfan_select_, this->actual_xfan_, this->gwh18_last_xfan_ui_index_);
   publish_bool_select(this->gwh18_save_select_, this->actual_save_, this->gwh18_last_save_ui_index_);
+
+  if (heartbeat_due)
+    this->gwh18_last_ui_publish_ms_ = now;
 }
 
 void TosotGWH18AC::set_fan_speed_select(select::Select *value) {
