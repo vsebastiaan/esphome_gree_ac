@@ -1,14 +1,20 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import climate, select, uart
-from esphome.const import CONF_ID
+from esphome.components import climate, select, sensor, uart
+from esphome.const import (
+    CONF_ID,
+    DEVICE_CLASS_TEMPERATURE,
+    STATE_CLASS_MEASUREMENT,
+    UNIT_CELSIUS,
+)
 
 # The GWH18 UI uses selects, but the shared/base driver still contains the
 # legacy switch-backed controls. Keep switch auto-loaded so those C++ headers
 # remain available and existing configurations stay compatible.
-AUTO_LOAD = ["select", "switch"]
+AUTO_LOAD = ["select", "sensor", "switch"]
 DEPENDENCIES = ["uart"]
 
+CONF_ROOM_TEMPERATURE_SENSOR = "room_temperature_sensor"
 CONF_FAN_SPEED_SELECT = "fan_speed_select"
 CONF_VERTICAL_SWING_SELECT = "vertical_swing_select"
 CONF_DISPLAY_SELECT = "display_select"
@@ -62,6 +68,18 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(): cv.declare_id(TosotGWH18AC),
 
+            # Separate sensor mirror for consumers that do not reliably expose
+            # ClimateState.current_temperature (notably the Homey ESPHome app).
+            cv.Optional(
+                CONF_ROOM_TEMPERATURE_SENSOR,
+                default={"name": "Ruimtetemperatuur"},
+            ): sensor.sensor_schema(
+                unit_of_measurement=UNIT_CELSIUS,
+                accuracy_decimals=1,
+                device_class=DEVICE_CLASS_TEMPERATURE,
+                state_class=STATE_CLASS_MEASUREMENT,
+            ),
+
             # Controls that are verified/useful enough to expose by default.
             cv.Optional(
                 CONF_FAN_SPEED_SELECT, default={"name": "Ventilatorsnelheid"}
@@ -92,6 +110,10 @@ async def to_code(config):
     await climate.register_climate(var, config)
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
+
+    if CONF_ROOM_TEMPERATURE_SENSOR in config:
+        room_sensor = await sensor.new_sensor(config[CONF_ROOM_TEMPERATURE_SENSOR])
+        cg.add(var.set_room_temperature_sensor(room_sensor))
 
     select_options = {
         CONF_FAN_SPEED_SELECT: FAN_SPEED_OPTIONS,

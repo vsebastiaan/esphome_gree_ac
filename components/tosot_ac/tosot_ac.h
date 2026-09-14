@@ -6,6 +6,7 @@
 
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/select/select.h"
+#include "esphome/components/sensor/sensor.h"
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/core/component.h"
@@ -30,6 +31,7 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   void control(const climate::ClimateCall &call) override;
   climate::ClimateTraits traits() override;
 
+  void set_room_temperature_sensor(sensor::Sensor *value) { this->room_temperature_sensor_ = value; }
   void set_horizontal_swing_select(select::Select *value);
   void set_vertical_swing_select(select::Select *value);
   void set_display_select(select::Select *value);
@@ -70,6 +72,7 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   uint8_t rx_expected_{0};
   std::vector<uint8_t> last_report_{};
 
+  sensor::Sensor *room_temperature_sensor_{nullptr};
   select::Select *horizontal_swing_select_{nullptr};
   select::Select *vertical_swing_select_{nullptr};
   select::Select *display_select_{nullptr};
@@ -85,6 +88,7 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
   uint32_t last_tx_ms_{0};
   uint32_t next_summary_ms_{0};
   uint32_t last_publish_ms_{0};
+  uint32_t last_room_temperature_publish_ms_{0};
   uint32_t tx_count_{0};
   uint32_t rx_byte_count_{0};
   uint32_t rx_frame_count_{0};
@@ -157,6 +161,7 @@ class TosotGWH18AC : public TosotAC {
   select::Select *gwh18_xfan_select_{nullptr};
   select::Select *gwh18_save_select_{nullptr};
 
+  uint32_t gwh18_last_ui_publish_ms_{0};
   uint8_t gwh18_last_fan_ui_code_{0xFF};
   uint8_t gwh18_last_vertical_ui_code_{0xFF};
   int8_t gwh18_last_display_ui_index_{-1};
