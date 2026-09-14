@@ -168,6 +168,15 @@ void TosotAC::control(const climate::ClimateCall &call) {
     changed = true;
   }
 
+  if (call.has_custom_fan_mode()) {
+    const auto requested = call.get_custom_fan_mode();
+    if (requested == "Turbo") {
+      this->desired_fan_code_ = 3;
+      this->desired_turbo_ = true;
+      changed = true;
+    }
+  }
+
   if (call.get_swing_mode().has_value()) {
     const auto requested = *call.get_swing_mode();
     this->swing_mode = requested;
@@ -484,6 +493,7 @@ void TosotAC::decode_report_(const std::vector<uint8_t> &frame) {
   const float previous_target = this->target_temperature;
   const float previous_current = this->current_temperature;
   const uint8_t previous_fan = this->last_fan_code_;
+  const bool previous_turbo = this->actual_turbo_;
   const auto previous_swing = this->swing_mode;
 
   const bool advanced_changed =
@@ -504,7 +514,10 @@ void TosotAC::decode_report_(const std::vector<uint8_t> &frame) {
   this->last_mode_code_ = mode_code <= 4 ? mode_code : this->last_mode_code_;
   this->last_fan_code_ = fan_code;
   this->mode = decoded_mode;
-  this->fan_mode = decoded_fan;
+  if (turbo && this->find_custom_fan_mode_("Turbo") != nullptr)
+    this->set_custom_fan_mode_("Turbo");
+  else
+    this->set_fan_mode_(decoded_fan);
   this->swing_mode = decoded_swing;
   this->target_temperature = target;
   this->current_temperature = current;
@@ -548,7 +561,7 @@ void TosotAC::decode_report_(const std::vector<uint8_t> &frame) {
                               std::fabs(previous_target - target) > 0.01f;
   const bool current_changed = !this->state_published_ || !std::isfinite(previous_current) ||
                                std::fabs(previous_current - current) > 0.01f;
-  const bool fan_changed = !this->state_published_ || previous_fan != fan_code;
+  const bool fan_changed = !this->state_published_ || previous_fan != fan_code || previous_turbo != turbo;
   const bool swing_changed = !this->state_published_ || previous_swing != decoded_swing;
   const bool state_changed = mode_changed || target_changed || current_changed || fan_changed || swing_changed;
 
