@@ -62,9 +62,27 @@ This stage also inverts the signal, therefore `GPIO1` is configured with `invert
 
 **Important pull-up detail:** there is no added external pull-up resistor on BLACK in the final build. The AC itself already pulls BLACK / AC-RX high; this was measured at roughly **4.8 V** on the tested unit. The TX-side 2N3904 is therefore used as an open-collector pull-down: GPIO1 drives its base through **4.7k**, and the transistor pulls BLACK low when active. The added external pull-up in this design is the **10k from GPIO3/RX to 3.3 V** on the opposite, AC-TX -> D1-RX transistor stage.
 
+## Important: disable physical serial logging
+
+The ESP8266 hardware UART TX pin used by the AC is `GPIO1`. ESPHome's normal serial logger also uses that pin unless it is disabled. If serial logging is left enabled, logger output is mixed onto the AC TX line and corrupts the 4800 8E1 protocol.
+
+The failure mode is misleading: the RX path can remain completely healthy with valid `2F/31` reports and zero checksum errors, while outgoing commands are received only intermittently or not at all.
+
+For this GWH18 configuration, always use:
+
+```yaml
+logger:
+  baud_rate: 0
+```
+
+ESPHome logging remains available over the API; this only disables physical UART log output on `GPIO1`.
+
 ## Known-good ESPHome UART configuration
 
 ```yaml
+logger:
+  baud_rate: 0
+
 uart:
   id: ac_uart
   tx_pin:
