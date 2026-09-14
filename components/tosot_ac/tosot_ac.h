@@ -139,6 +139,8 @@ class TosotAC : public Component, public uart::UARTDevice, public climate::Clima
 
 class TosotGWH18AC : public TosotAC {
  public:
+  void setup() override;
+  void control(const climate::ClimateCall &call) override;
   climate::ClimateTraits traits() override;
   void loop() override;
 
@@ -162,7 +164,6 @@ class TosotGWH18AC : public TosotAC {
   select::Select *gwh18_save_select_{nullptr};
 
   bool gwh18_ui_publish_in_progress_{false};
-  uint32_t gwh18_last_ui_publish_ms_{0};
   uint8_t gwh18_last_fan_ui_code_{0xFF};
   uint8_t gwh18_last_vertical_ui_code_{0xFF};
   int8_t gwh18_last_display_ui_index_{-1};
