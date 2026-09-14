@@ -13,6 +13,15 @@ At the same time, this repository has **diverged substantially** from the upstre
 > - D1 **GPIO1/TX** -> **4.7k** -> base **2N3904**; emitter -> **BROWN/GND**; collector -> **BLACK (AC RX)**.
 > - **Do not add an external pull-up on BLACK.** The AC side already pulls BLACK/AC-RX high (measured around **4.8V** on the test unit); the transistor therefore only sinks that line low. The external 10k pull-up belongs on the ESP8266 RX collector side, to 3.3V.
 >
+> **IMPORTANT — disable the ESP8266 serial logger on GPIO1.** The AC uses the hardware UART TX pin (`GPIO1`) at 4800 8E1. A normal ESPHome `logger:` block also writes serial log output to GPIO1 and will corrupt AC commands. This can look deceptively like a hardware fault: RX may remain perfect while only occasional commands reach the AC. Use:
+>
+> ```yaml
+> logger:
+>   baud_rate: 0
+> ```
+>
+> Logs remain available through the ESPHome API; only the physical serial log output is disabled.
+>
 > The GWH18 profile exposes Dutch Homey-oriented controls: `Ventilatorsnelheid` = Automatisch / Laag / Midden / Hoog / Turbo, `Verticale lamel`, `Display` and `Slaapstand`. Standard climate modes are localized by Homey as Automatisch / Koelen / Verwarmen / Ontvochtigen / Alleen ventileren / Uit. Less certain family-level mappings such as Save/Eco, X-Fan, Health/Plasma and Beeper remain explicit opt-in test controls. No separate GWH18 Quiet/Stil fan mode has been proven or exposed.
 
 # Open source WIFI module replacement for Gree protocol based AC's for Home Assistant.
