@@ -8,9 +8,8 @@ from esphome.const import (
     UNIT_CELSIUS,
 )
 
-# The GWH18 UI uses selects, but the shared/base driver still contains the
-# legacy switch-backed controls. Keep switch auto-loaded so those C++ headers
-# remain available and existing configurations stay compatible.
+# The GWH18 exposes its core HVAC state through ESPHome Climate. Selects are
+# retained only for controls that do not fit the standard climate model.
 AUTO_LOAD = ["select", "sensor", "switch"]
 DEPENDENCIES = ["uart"]
 
@@ -25,9 +24,9 @@ CONF_SLEEP_SELECT = "sleep_select"
 CONF_XFAN_SELECT = "xfan_select"
 CONF_SAVE_SELECT = "save_select"
 
-# Exact behaviour measured on the Tosot GWH18 hardware.
-# Turbo is a separate protocol bit, but is intentionally presented as the
-# highest fan-speed choice in the user interface.
+# Legacy/opt-in selector kept for existing explicit YAML configurations. A
+# normal GWH18 install now exposes fan speed through the native Climate entity
+# (Auto/Low/Medium/High plus custom Turbo) instead.
 FAN_SPEED_OPTIONS = [
     "Automatisch",
     "Laag",
@@ -68,22 +67,19 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(): cv.declare_id(TosotGWH18AC),
 
-            # Separate sensor mirror for consumers that do not reliably expose
-            # ClimateState.current_temperature (notably the Homey ESPHome app).
-            cv.Optional(
-                CONF_ROOM_TEMPERATURE_SENSOR,
-                default={"name": "Ruimtetemperatuur"},
-            ): sensor.sensor_schema(
+            # Compatibility/debug options only. Room temperature is already a
+            # native Climate current_temperature and no extra sensor is needed
+            # in a normal installation.
+            cv.Optional(CONF_ROOM_TEMPERATURE_SENSOR): sensor.sensor_schema(
                 unit_of_measurement=UNIT_CELSIUS,
                 accuracy_decimals=1,
                 device_class=DEVICE_CLASS_TEMPERATURE,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
+            cv.Optional(CONF_FAN_SPEED_SELECT): select_schema,
 
-            # Controls that are verified/useful enough to expose by default.
-            cv.Optional(
-                CONF_FAN_SPEED_SELECT, default={"name": "Ventilatorsnelheid"}
-            ): select_schema,
+            # Verified controls that do not have a sufficiently expressive
+            # standard Climate representation.
             cv.Optional(
                 CONF_VERTICAL_SWING_SELECT, default={"name": "Verticale lamel"}
             ): select_schema,
