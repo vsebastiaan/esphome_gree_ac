@@ -59,11 +59,23 @@ void TosotGWH18AC::loop() {
       this->room_temperature_sensor_->publish_state(this->current_temperature);
   }
 
+  // ESPHome Select::publish_state() also invokes the select's state callbacks.
+  // Those callbacks are our command handlers, so mark driver-originated state
+  // publication to keep the heartbeat strictly read-only. User/Homey writes
+  // run with this flag clear and continue to queue real AC commands.
+  auto publish_select_state = [this](select::Select *entity, const char *state) {
+    if (entity == nullptr)
+      return;
+    this->gwh18_ui_publish_in_progress_ = true;
+    entity->publish_state(state);
+    this->gwh18_ui_publish_in_progress_ = false;
+  };
+
   if (this->gwh18_fan_speed_select_ != nullptr && this->last_fan_code_ <= 3) {
     const uint8_t ui_code = this->actual_turbo_ ? 4 : this->last_fan_code_;
     if (ui_code != this->gwh18_last_fan_ui_code_ || heartbeat_due) {
       this->gwh18_last_fan_ui_code_ = ui_code;
-      this->gwh18_fan_speed_select_->publish_state(GWH18_FAN_OPTIONS[ui_code]);
+      publish_select_state(this->gwh18_fan_speed_select_, GWH18_FAN_OPTIONS[ui_code]);
     }
   }
 
@@ -78,18 +90,19 @@ void TosotGWH18AC::loop() {
 
     if (ui_code != 0xFF && (ui_code != this->gwh18_last_vertical_ui_code_ || heartbeat_due)) {
       this->gwh18_last_vertical_ui_code_ = ui_code;
-      this->gwh18_vertical_swing_select_->publish_state(GWH18_VERTICAL_OPTIONS[ui_code - 1]);
+      publish_select_state(this->gwh18_vertical_swing_select_, GWH18_VERTICAL_OPTIONS[ui_code - 1]);
     }
   }
 
-  auto publish_bool_select = [heartbeat_due](select::Select *entity, bool state, int8_t &last_index) {
+  auto publish_bool_select = [heartbeat_due, &publish_select_state](select::Select *entity, bool state,
+                                                                    int8_t &last_index) {
     if (entity == nullptr)
       return;
     const int8_t index = state ? 1 : 0;
     if (index == last_index && !heartbeat_due)
       return;
     last_index = index;
-    entity->publish_state(GWH18_ON_OFF_OPTIONS[index]);
+    publish_select_state(entity, GWH18_ON_OFF_OPTIONS[index]);
   };
 
   publish_bool_select(this->gwh18_display_select_, this->actual_display_power_, this->gwh18_last_display_ui_index_);
@@ -106,6 +119,8 @@ void TosotGWH18AC::loop() {
 void TosotGWH18AC::set_fan_speed_select(select::Select *value) {
   this->gwh18_fan_speed_select_ = value;
   value->add_on_state_callback([this](size_t index) {
+    if (this->gwh18_ui_publish_in_progress_)
+      return;
     if (index > 4)
       return;
 
@@ -137,6 +152,8 @@ void TosotGWH18AC::set_fan_speed_select(select::Select *value) {
 void TosotGWH18AC::set_vertical_swing_select(select::Select *value) {
   this->gwh18_vertical_swing_select_ = value;
   value->add_on_state_callback([this](size_t index) {
+    if (this->gwh18_ui_publish_in_progress_)
+      return;
     if (index >= 6)
       return;
 
@@ -155,6 +172,8 @@ void TosotGWH18AC::set_vertical_swing_select(select::Select *value) {
 void TosotGWH18AC::set_display_select(select::Select *value) {
   this->gwh18_display_select_ = value;
   value->add_on_state_callback([this](size_t index) {
+    if (this->gwh18_ui_publish_in_progress_)
+      return;
     if (index > 1)
       return;
 
@@ -175,6 +194,8 @@ void TosotGWH18AC::set_display_select(select::Select *value) {
 void TosotGWH18AC::set_plasma_select(select::Select *value) {
   this->gwh18_plasma_select_ = value;
   value->add_on_state_callback([this](size_t index) {
+    if (this->gwh18_ui_publish_in_progress_)
+      return;
     if (index > 1)
       return;
     const bool state = index == 1;
@@ -189,6 +210,8 @@ void TosotGWH18AC::set_plasma_select(select::Select *value) {
 void TosotGWH18AC::set_beeper_select(select::Select *value) {
   this->gwh18_beeper_select_ = value;
   value->add_on_state_callback([this](size_t index) {
+    if (this->gwh18_ui_publish_in_progress_)
+      return;
     if (index > 1)
       return;
     const bool state = index == 1;
@@ -203,6 +226,8 @@ void TosotGWH18AC::set_beeper_select(select::Select *value) {
 void TosotGWH18AC::set_sleep_select(select::Select *value) {
   this->gwh18_sleep_select_ = value;
   value->add_on_state_callback([this](size_t index) {
+    if (this->gwh18_ui_publish_in_progress_)
+      return;
     if (index > 1)
       return;
     const bool state = index == 1;
@@ -217,6 +242,8 @@ void TosotGWH18AC::set_sleep_select(select::Select *value) {
 void TosotGWH18AC::set_xfan_select(select::Select *value) {
   this->gwh18_xfan_select_ = value;
   value->add_on_state_callback([this](size_t index) {
+    if (this->gwh18_ui_publish_in_progress_)
+      return;
     if (index > 1)
       return;
     const bool state = index == 1;
@@ -231,6 +258,8 @@ void TosotGWH18AC::set_xfan_select(select::Select *value) {
 void TosotGWH18AC::set_save_select(select::Select *value) {
   this->gwh18_save_select_ = value;
   value->add_on_state_callback([this](size_t index) {
+    if (this->gwh18_ui_publish_in_progress_)
+      return;
     if (index > 1)
       return;
     const bool state = index == 1;
