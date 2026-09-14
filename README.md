@@ -22,7 +22,9 @@ At the same time, this repository has **diverged substantially** from the upstre
 >
 > Logs remain available through the ESPHome API; only the physical serial log output is disabled.
 >
-> The GWH18 profile exposes Dutch Homey-oriented controls: `Ventilatorsnelheid` = Automatisch / Laag / Midden / Hoog / Turbo, `Verticale lamel`, `Display` and `Slaapstand`. Standard climate modes are localized by Homey as Automatisch / Koelen / Verwarmen / Ontvochtigen / Alleen ventileren / Uit. Less certain family-level mappings such as Save/Eco, X-Fan, Health/Plasma and Beeper remain explicit opt-in test controls. No separate GWH18 Quiet/Stil fan mode has been proven or exposed.
+> The GWH18 profile exposes Dutch Homey-oriented controls: `Ventilatorsnelheid` = Automatisch / Laag / Midden / Hoog / Turbo, `Verticale lamel`, `Display` and `Slaapstand`. It also exposes a separate `Ruimtetemperatuur` sensor that mirrors the room temperature decoded from the AC. This sensor exists because some Homey ESPHome versions create the climate temperature capability but leave its value empty; normal ESPHome SensorState is mapped reliably. Standard climate modes are localized by Homey as Automatisch / Koelen / Verwarmen / Ontvochtigen / Alleen ventileren / Uit. Less certain family-level mappings such as Save/Eco, X-Fan, Health/Plasma and Beeper remain explicit opt-in test controls. No separate GWH18 Quiet/Stil fan mode has been proven or exposed.
+>
+> After flashing firmware that adds new ESPHome entities to an already paired Homey device, use the ESPHome device's **Refresh capabilities** action once so Homey adds the new capability without re-pairing the device.
 
 # Open source WIFI module replacement for Gree protocol based AC's for Home Assistant.
 This repository adds support for ESP-based WiFi modules to interface with Gree/Sinclair AC units.
