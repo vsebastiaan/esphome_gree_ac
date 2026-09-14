@@ -31,11 +31,41 @@ static const char *const GWH18_ON_OFF_OPTIONS[] = {
     "Aan",
 };
 
+void TosotGWH18AC::setup() {
+  TosotAC::setup();
+  // Keep fan control inside the standard ESPHome Climate entity so generic
+  // consumers (including Homey) expose one native fan_mode capability. Turbo
+  // is the only model-specific extension and is represented as a custom fan
+  // mode rather than as a separate Select entity.
+  this->set_supported_custom_fan_modes({"Turbo"});
+}
+
 climate::ClimateTraits TosotGWH18AC::traits() {
   auto traits = TosotAC::traits();
-  traits.set_supported_fan_modes({});
+  // Standard fan modes remain native. The six-position vertical louver cannot
+  // be represented faithfully by ESPHome's generic swing enum, so that stays
+  // on the dedicated select.
   traits.set_supported_swing_modes({});
   return traits;
+}
+
+void TosotGWH18AC::control(const climate::ClimateCall &call) {
+  TosotAC::control(call);
+
+  if (!this->ready_ || !call.has_custom_fan_mode())
+    return;
+
+  const auto requested = call.get_custom_fan_mode();
+  if (requested != "Turbo")
+    return;
+
+  if (this->desired_fan_code_ == 3 && this->desired_turbo_)
+    return;
+
+  this->desired_fan_code_ = 3;
+  this->desired_turbo_ = true;
+  ESP_LOGI(TAG_GWH18, "Native fan request=Turbo protocol_fan=3 turbo=on");
+  this->queue_control_("climate-turbo");
 }
 
 void TosotGWH18AC::loop() {
@@ -44,25 +74,19 @@ void TosotGWH18AC::loop() {
   if (!this->ready_)
     return;
 
-  const uint32_t now = millis();
-  const bool heartbeat_due = this->gwh18_last_ui_publish_ms_ == 0 ||
-                             now - this->gwh18_last_ui_publish_ms_ >= STATE_HEARTBEAT_MS;
-
-  // Mirror the decoded room temperature as a normal ESPHome sensor. Homey
-  // reliably maps SensorState values even on versions where the native
-  // ClimateState current_temperature remains empty.
+  // Optional compatibility sensor only. Native Climate current_temperature is
+  // the canonical room-temperature state and is sufficient for normal use.
   if (this->room_temperature_sensor_ != nullptr) {
     const bool changed = !this->room_temperature_sensor_->has_state() ||
                          !std::isfinite(this->room_temperature_sensor_->state) ||
                          std::fabs(this->room_temperature_sensor_->state - this->current_temperature) > 0.01f;
-    if (changed || heartbeat_due)
+    if (changed)
       this->room_temperature_sensor_->publish_state(this->current_temperature);
   }
 
-  // ESPHome Select::publish_state() also invokes the select's state callbacks.
-  // Those callbacks are our command handlers, so mark driver-originated state
-  // publication to keep the heartbeat strictly read-only. User/Homey writes
-  // run with this flag clear and continue to queue real AC commands.
+  // ESPHome Select::publish_state() invokes state callbacks. Mark publications
+  // that originate from decoded AC state so they can never re-enter the
+  // command path. There is deliberately no periodic select heartbeat here.
   auto publish_select_state = [this](select::Select *entity, const char *state) {
     if (entity == nullptr)
       return;
@@ -71,9 +95,11 @@ void TosotGWH18AC::loop() {
     this->gwh18_ui_publish_in_progress_ = false;
   };
 
+  // Legacy explicit YAML can still request the old fan select. It is no longer
+  // auto-created; native Climate fan_mode is the normal interface.
   if (this->gwh18_fan_speed_select_ != nullptr && this->last_fan_code_ <= 3) {
     const uint8_t ui_code = this->actual_turbo_ ? 4 : this->last_fan_code_;
-    if (ui_code != this->gwh18_last_fan_ui_code_ || heartbeat_due) {
+    if (ui_code != this->gwh18_last_fan_ui_code_) {
       this->gwh18_last_fan_ui_code_ = ui_code;
       publish_select_state(this->gwh18_fan_speed_select_, GWH18_FAN_OPTIONS[ui_code]);
     }
@@ -88,18 +114,17 @@ void TosotGWH18AC::loop() {
       ui_code = this->actual_vertical_swing_code_;
     }
 
-    if (ui_code != 0xFF && (ui_code != this->gwh18_last_vertical_ui_code_ || heartbeat_due)) {
+    if (ui_code != 0xFF && ui_code != this->gwh18_last_vertical_ui_code_) {
       this->gwh18_last_vertical_ui_code_ = ui_code;
       publish_select_state(this->gwh18_vertical_swing_select_, GWH18_VERTICAL_OPTIONS[ui_code - 1]);
     }
   }
 
-  auto publish_bool_select = [heartbeat_due, &publish_select_state](select::Select *entity, bool state,
-                                                                    int8_t &last_index) {
+  auto publish_bool_select = [&publish_select_state](select::Select *entity, bool state, int8_t &last_index) {
     if (entity == nullptr)
       return;
     const int8_t index = state ? 1 : 0;
-    if (index == last_index && !heartbeat_due)
+    if (index == last_index)
       return;
     last_index = index;
     publish_select_state(entity, GWH18_ON_OFF_OPTIONS[index]);
@@ -111,9 +136,6 @@ void TosotGWH18AC::loop() {
   publish_bool_select(this->gwh18_sleep_select_, this->actual_sleep_, this->gwh18_last_sleep_ui_index_);
   publish_bool_select(this->gwh18_xfan_select_, this->actual_xfan_, this->gwh18_last_xfan_ui_index_);
   publish_bool_select(this->gwh18_save_select_, this->actual_save_, this->gwh18_last_save_ui_index_);
-
-  if (heartbeat_due)
-    this->gwh18_last_ui_publish_ms_ = now;
 }
 
 void TosotGWH18AC::set_fan_speed_select(select::Select *value) {
